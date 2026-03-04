@@ -1,0 +1,40 @@
+# Build artifacts
+rocm-7.2-runtime-libs.tar.gz
+*.tar.gz
+*.tar
+*.zip
+
+# Checksum files
+*.sha256
+*.md5
+
+# Temporary extraction directories
+rocm-runtime/
+rocm-7.2-runtime/
+test-extract/
+tmp/
+temp/
+
+# Docker
+.dockerignore
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# Logs
+*.log
+
+# Test files
+test/
+tests/
+*.test

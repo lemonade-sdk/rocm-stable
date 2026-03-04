@@ -1,0 +1,167 @@
+name: Build and Release ROCm Runtime Bundle
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'b*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ROCm Runtime Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ROCm runtime bundle
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Verify package was created
+        run: |
+          if [ ! -f rocm-7.2-runtime-libs.tar.gz ]; then
+            echo "Error: Package file not found!"
+            exit 1
+          fi
+          echo "Package size: $(du -h rocm-7.2-runtime-libs.tar.gz | cut -f1)"
+          echo "Package created successfully"
+
+      - name: Generate checksums
+        run: |
+          sha256sum rocm-7.2-runtime-libs.tar.gz > rocm-7.2-runtime-libs.tar.gz.sha256
+          cat rocm-7.2-runtime-libs.tar.gz.sha256
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocm-runtime-bundle
+          path: |
+            rocm-7.2-runtime-libs.tar.gz
+            rocm-7.2-runtime-libs.tar.gz.sha256
+          retention-days: 5
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rocm-runtime-bundle
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "Building release for version: ${GITHUB_REF#refs/tags/}"
+
+      - name: Create release notes
+        id: release_notes
+        run: |
+          cat > release_notes.md << 'EOF'
+          # ROCm 7.2 Runtime Libraries Bundle
+
+          This release provides a standalone bundle of ROCm 7.2 runtime libraries for use with llama.cpp and other HIP-enabled applications.
+
+          ## What's Included
+
+          ### Core Runtime Libraries
+          - `libamdhip64.so*` - HIP runtime
+          - `libhsa-runtime64.so*` - HSA runtime
+          - `libhipblas.so*` - HIP BLAS library
+          - `libhipblaslt.so*` - HIP BLAS LT library
+          - `librocblas.so*` - ROCm BLAS library
+          - `librocsparse.so*` - ROCm sparse linear algebra
+          - Additional supporting libraries (comgr, hsakmt, drm)
+
+          ### GPU Kernel Files
+          - `rocblas/` directory with GPU kernels
+          - `hipblaslt/` directory with GPU kernels
+
+          ### Helper Scripts
+          - `setup-env.sh` - Environment configuration script
+          - `README.md` - Detailed usage instructions
+
+          ## System Requirements
+
+          - AMD GPU with ROCm support
+          - Linux with AMDGPU driver
+          - No system ROCm installation required
+
+          ## Compatible With
+
+          - llama.cpp binaries built for ROCm 7.2
+          - Other applications compiled against ROCm 7.2
+
+          ## Quick Start
+
+          ```bash
+          # Download and extract
+          tar -xzf rocm-7.2-runtime-libs.tar.gz
+
+          # Configure environment
+          source rocm-7.2-runtime/setup-env.sh
+
+          # Run your HIP-enabled application
+          ./llama-cli --version
+          ```
+
+          ## Using with llama.cpp
+
+          1. Download llama.cpp ROCm binaries from: https://github.com/ggml-org/llama.cpp/releases
+          2. Download this ROCm runtime bundle
+          3. Extract both archives
+          4. Source the `setup-env.sh` script from this bundle
+          5. Run llama.cpp binaries
+
+          See the included README.md for detailed instructions and troubleshooting.
+
+          ## Verification
+
+          **SHA256 Checksum:**
+          ```
+          $(cat rocm-7.2-runtime-libs.tar.gz.sha256)
+          ```
+
+          Verify with:
+          ```bash
+          sha256sum -c rocm-7.2-runtime-libs.tar.gz.sha256
+          ```
+
+          ## License
+
+          ROCm libraries are licensed under MIT and Apache 2.0 licenses by AMD.
+
+          ---
+
+          **Note:** This is an unofficial redistribution of ROCm runtime libraries for convenience. For official ROCm releases, visit: https://github.com/RadeonOpenCompute/ROCm
+          EOF
+
+          echo "Release notes generated"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ROCm 7.2 Runtime Bundle ${{ steps.version.outputs.VERSION }}
+          body_path: release_notes.md
+          files: |
+            rocm-7.2-runtime-libs.tar.gz
+            rocm-7.2-runtime-libs.tar.gz.sha256
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
