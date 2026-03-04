@@ -2,7 +2,7 @@
 # This Dockerfile extracts the necessary ROCm runtime libraries from the official
 # ROCm container and packages them for standalone distribution.
 
-FROM rocm/dev-ubuntu-24.04:7.2-complete AS extractor
+FROM rocm/dev-ubuntu-24.04:7.2 AS extractor
 
 # Create working directory for the runtime package
 WORKDIR /rocm-runtime
