@@ -7,22 +7,20 @@ FROM rocm/dev-ubuntu-24.04:7.2 AS extractor
 # Create working directory for the runtime package
 WORKDIR /rocm-runtime
 
-# Copy required shared libraries from ROCm installation
+# Move required shared libraries from ROCm installation
 # These are the core libraries needed for llama.cpp HIP backend
-RUN cp -a /opt/rocm/lib/librocsparse.so* . && \
-    cp -a /opt/rocm/lib/libhsa-runtime64.so* . && \
-    cp -a /opt/rocm/lib/libamdhip64.so* . && \
-    cp -a /opt/rocm/lib/libhipblas.so* . && \
-    cp -a /opt/rocm/lib/libhipblaslt.so* . && \
-    cp -a /opt/rocm/lib/librocblas.so* . && \
-    cp -a /opt/rocm/lib/libamd_comgr.so* . && \
-    cp -a /opt/rocm/lib/libhsakmt.so* . && \
-    cp -a /opt/rocm/lib/libdrm.so* . && \
-    cp -a /opt/rocm/lib/libdrm_amdgpu.so* .
-
-# Copy kernel directories (required for GPU compute operations)
-RUN cp -a /opt/rocm/lib/rocblas . && \
-    cp -a /opt/rocm/lib/hipblaslt .
+RUN mv /opt/rocm/lib/librocsparse.so* . && \
+    mv /opt/rocm/lib/libhsa-runtime64.so* . && \
+    mv /opt/rocm/lib/libamdhip64.so* . && \
+    mv /opt/rocm/lib/libhipblas.so* . && \
+    mv /opt/rocm/lib/libhipblaslt.so* . && \
+    mv /opt/rocm/lib/librocblas.so* . && \
+    mv /opt/rocm/lib/libamd_comgr.so* . && \
+    mv /opt/rocm/lib/libhsakmt.so* . && \
+    mv /opt/rocm/lib/libdrm.so* . && \
+    mv /opt/rocm/lib/libdrm_amdgpu.so* . && \
+    mv /opt/rocm/lib/rocblas . && \
+    mv /opt/rocm/lib/hipblaslt .
 
 # Copy template files into the package
 COPY templates/setup-env.sh .
