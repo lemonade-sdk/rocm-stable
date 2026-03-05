@@ -134,9 +134,12 @@ Common values:
 
 ### Prerequisites
 
-- Docker
-- Bash
-- ~10GB free disk space (for Docker image and extraction)
+- `bash`
+- `wget`
+- `tar`
+- `ar` (usually part of `binutils`)
+- `zstd` (for extracting some `.deb` packages)
+- ~10GB free disk space (mostly for temporary extraction)
 
 ### Build Steps
 
@@ -153,9 +156,9 @@ Common values:
    ```
 
 3. The script will:
-   - Build a Docker image from the official ROCm 7.2 container
-   - Extract runtime libraries and kernels
-   - Create `rocm-7.2-runtime-libs.tar.gz`
+   - Download official ROCm 7.2 `.deb` packages from the AMD repository
+   - Extract runtime libraries and kernels without installing them to your system
+   - Create a portable `rocm-7.2-runtime-libs.tar.gz` bundle
 
 4. Find the bundle in the current directory:
    ```bash
@@ -265,10 +268,10 @@ If you experience poor performance:
 
 ### Extraction Process
 
-1. The `Dockerfile` uses the official `rocm/dev-ubuntu-24.04:7.2-complete` image
-2. It copies essential runtime libraries from `/opt/rocm/lib/`
-3. It includes GPU kernel directories (`rocblas/`, `hipblaslt/`)
-4. It packages everything with helper scripts into a tarball
+1. The `build.sh` script downloads official ROCm 7.2 `.deb` packages for Ubuntu 24.04 (Noble)
+2. It uses `ar` and `tar` to extract the package contents without requiring root or a package manager
+3. It copies essential runtime libraries and GPU kernel directories (`rocblas/`, `hipblaslt/`)
+4. It packages everything with helper scripts into a portable tarball
 
 ### Why This Approach?
 
