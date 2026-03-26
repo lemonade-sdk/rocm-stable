@@ -1,13 +1,13 @@
-# ROCm 7.2 Runtime Bundle for llama.cpp
+# ROCm 7.2.1 Runtime Bundle for llama.cpp
 
-This repository provides a standalone bundle of ROCm 7.2 runtime libraries, enabling you to run llama.cpp binaries with AMD GPU (HIP) support **without requiring a full ROCm installation** on your system.
+This repository provides a standalone bundle of ROCm 7.2.1 runtime libraries, enabling you to run llama.cpp binaries with AMD GPU (HIP) support **without requiring a full ROCm installation** on your system.
 
 ## Overview
 
-The llama.cpp project distributes pre-built binaries for ROCm 7.2, but these binaries require ROCm runtime libraries to function. Installing the full ROCm stack (~5GB) can be cumbersome and may conflict with existing system configurations.
+The llama.cpp project distributes pre-built binaries for ROCm 7.2.1, but these binaries require ROCm runtime libraries to function. Installing the full ROCm stack (~5GB) can be cumbersome and may conflict with existing system configurations.
 
 This project solves that problem by:
-1. Extracting only the essential ROCm 7.2 runtime libraries from the official ROCm container
+1. Extracting only the essential ROCm 7.2.1 runtime libraries from the official ROCm container
 2. Packaging them as a portable, self-contained bundle (~500MB-1GB)
 3. Providing simple environment setup scripts for immediate use
 
@@ -19,18 +19,18 @@ Download the latest release from the [Releases](../../releases) page:
 
 ```bash
 # Download ROCm runtime bundle
-wget https://github.com/lemonade-sdk/rocm-stable/releases/latest/download/rocm-7.2-runtime-libs.tar.gz
+wget https://github.com/lemonade-sdk/rocm-stable/releases/latest/download/rocm-7.2.1-runtime-libs.tar.gz
 
 # Download llama.cpp ROCm binaries (example)
-wget https://github.com/ggml-org/llama.cpp/releases/download/b8192/llama-b8192-bin-ubuntu-rocm-7.2-x64.tar.gz
+wget https://github.com/ggml-org/llama.cpp/releases/download/b8192/llama-b8192-bin-ubuntu-rocm-7.2.1-x64.tar.gz
 
 # Extract both
-tar -xzf llama-b8192-bin-ubuntu-rocm-7.2-x64.tar.gz
-tar -xzf rocm-7.2-runtime-libs.tar.gz
+tar -xzf llama-b8192-bin-ubuntu-rocm-7.2.1-x64.tar.gz
+tar -xzf rocm-7.2.1-runtime-libs.tar.gz
 
 # Run with ROCm support
-cd llama-b8192-bin-ubuntu-rocm-7.2-x64
-source ../rocm-7.2-runtime/setup-env.sh
+cd llama-b8192-bin-ubuntu-rocm-7.2.1-x64
+source ../rocm-7.2.1-runtime/setup-env.sh
 ./llama-cli --version
 ```
 
@@ -97,7 +97,7 @@ rocminfo | grep gfx
 The bundle includes a `setup-env.sh` script that configures your environment:
 
 ```bash
-source rocm-7.2-runtime/setup-env.sh
+source rocm-7.2.1-runtime/setup-env.sh
 ```
 
 This script:
@@ -110,8 +110,8 @@ This script:
 If you prefer manual setup:
 
 ```bash
-export LD_LIBRARY_PATH=/path/to/rocm-7.2-runtime:${LD_LIBRARY_PATH}
-export ROCM_PATH=/path/to/rocm-7.2-runtime
+export LD_LIBRARY_PATH=/path/to/rocm-7.2.1-runtime:${LD_LIBRARY_PATH}
+export ROCM_PATH=/path/to/rocm-7.2.1-runtime
 ```
 
 ### GPU Architecture Override
@@ -145,8 +145,8 @@ Common values:
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/YOUR-USERNAME/rocm-7.2.git
-   cd rocm-7.2
+   git clone https://github.com/YOUR-USERNAME/rocm-7.2.1.git
+   cd rocm-7.2.1
    ```
 
 2. Run the build script:
@@ -156,28 +156,28 @@ Common values:
    ```
 
 3. The script will:
-   - Download official ROCm 7.2 `.deb` packages from the AMD repository
+   - Download official ROCm 7.2.1 `.deb` packages from the AMD repository
    - Extract runtime libraries and kernels without installing them to your system
-   - Create a portable `rocm-7.2-runtime-libs.tar.gz` bundle
+   - Create a portable `rocm-7.2.1-runtime-libs.tar.gz` bundle
 
 4. Find the bundle in the current directory:
    ```bash
-   ls -lh rocm-7.2-runtime-libs.tar.gz
+   ls -lh rocm-7.2.1-runtime-libs.tar.gz
    ```
 
 ## Compatibility
 
 ### llama.cpp Versions
 
-This bundle is compatible with llama.cpp binaries built for ROCm 7.2. Check the llama.cpp release notes to ensure you're downloading the correct binaries.
+This bundle is compatible with llama.cpp binaries built for ROCm 7.2.1. Check the llama.cpp release notes to ensure you're downloading the correct binaries.
 
 Example compatible releases:
-- llama.cpp `b8192` and later (Ubuntu ROCm 7.2 builds)
-- Any llama.cpp binary tagged with `rocm-7.2`
+- llama.cpp `b8192` and later (Ubuntu ROCm 7.2.1 builds)
+- Any llama.cpp binary tagged with `rocm-7.2.1`
 
 ### ROCm Version
 
-This bundle is specifically for **ROCm 7.2**. Using it with binaries built for other ROCm versions (6.x, 7.0, 7.1) may result in undefined behavior or crashes.
+This bundle is specifically for **ROCm 7.2.1**. Using it with binaries built for other ROCm versions (6.x, 7.0, 7.1) may result in undefined behavior or crashes.
 
 ## Troubleshooting
 
@@ -191,12 +191,12 @@ error while loading shared libraries: libamdhip64.so.6: cannot open shared objec
 **Solution:**
 Ensure you've sourced the setup script:
 ```bash
-source rocm-7.2-runtime/setup-env.sh
+source rocm-7.2.1-runtime/setup-env.sh
 ```
 
 Or manually set `LD_LIBRARY_PATH`:
 ```bash
-export LD_LIBRARY_PATH=/path/to/rocm-7.2-runtime:${LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH=/path/to/rocm-7.2.1-runtime:${LD_LIBRARY_PATH}
 ```
 
 ### GPU Not Detected
@@ -268,7 +268,7 @@ If you experience poor performance:
 
 ### Extraction Process
 
-1. The `build.sh` script downloads official ROCm 7.2 `.deb` packages for Ubuntu 24.04 (Noble)
+1. The `build.sh` script downloads official ROCm 7.2.1 `.deb` packages for Ubuntu 24.04 (Noble)
 2. It uses `ar` and `tar` to extract the package contents without requiring root or a package manager
 3. It copies essential runtime libraries and GPU kernel directories (`rocblas/`, `hipblaslt/`)
 4. It packages everything with helper scripts into a portable tarball

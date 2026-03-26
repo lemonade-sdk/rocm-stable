@@ -1,6 +1,6 @@
-# ROCm 7.2 Runtime Libraries Bundle
+# ROCm 7.2.1 Runtime Libraries Bundle
 
-This package contains the essential ROCm 7.2 runtime libraries needed to run llama.cpp binaries with HIP (AMD GPU) support, without requiring a full ROCm installation on your system.
+This package contains the essential ROCm 7.2.1 runtime libraries needed to run llama.cpp binaries with HIP (AMD GPU) support, without requiring a full ROCm installation on your system.
 
 ## What's Included
 
@@ -35,12 +35,12 @@ This package contains the essential ROCm 7.2 runtime libraries needed to run lla
 
 1. Extract this package:
    ```bash
-   tar -xzf rocm-7.2-runtime-libs.tar.gz
+   tar -xzf rocm-7.2.1-runtime-libs.tar.gz
    ```
 
 2. Source the environment setup script:
    ```bash
-   source rocm-7.2-runtime/setup-env.sh
+   source rocm-7.2.1-runtime/setup-env.sh
    ```
 
 3. Run your llama.cpp binary:
@@ -54,18 +54,18 @@ Download the llama.cpp ROCm binaries from their releases page, then combine with
 
 ```bash
 # Download llama.cpp ROCm binaries (example)
-wget https://github.com/ggml-org/llama.cpp/releases/download/b8192/llama-b8192-bin-ubuntu-rocm-7.2-x64.tar.gz
+wget https://github.com/ggml-org/llama.cpp/releases/download/b8192/llama-b8192-bin-ubuntu-rocm-7.2.1-x64.tar.gz
 
 # Download ROCm runtime libraries (from this repository's releases)
-wget https://github.com/YOUR-USERNAME/rocm-7.2/releases/latest/download/rocm-7.2-runtime-libs.tar.gz
+wget https://github.com/YOUR-USERNAME/rocm-7.2.1/releases/latest/download/rocm-7.2.1-runtime-libs.tar.gz
 
 # Extract both
-tar -xzf llama-b8192-bin-ubuntu-rocm-7.2-x64.tar.gz
-tar -xzf rocm-7.2-runtime-libs.tar.gz
+tar -xzf llama-b8192-bin-ubuntu-rocm-7.2.1-x64.tar.gz
+tar -xzf rocm-7.2.1-runtime-libs.tar.gz
 
 # Run with ROCm support
-cd llama-b8192-bin-ubuntu-rocm-7.2-x64
-source ../rocm-7.2-runtime/setup-env.sh
+cd llama-b8192-bin-ubuntu-rocm-7.2.1-x64
+source ../rocm-7.2.1-runtime/setup-env.sh
 ./llama-cli --version
 ```
 
@@ -74,8 +74,8 @@ source ../rocm-7.2-runtime/setup-env.sh
 If you prefer not to use the `setup-env.sh` script, you can manually set the environment variables:
 
 ```bash
-export LD_LIBRARY_PATH=/path/to/rocm-7.2-runtime:${LD_LIBRARY_PATH}
-export ROCM_PATH=/path/to/rocm-7.2-runtime
+export LD_LIBRARY_PATH=/path/to/rocm-7.2.1-runtime:${LD_LIBRARY_PATH}
+export ROCM_PATH=/path/to/rocm-7.2.1-runtime
 ```
 
 ### GPU Compatibility
@@ -133,9 +133,9 @@ For optimal performance:
 
 ## Version Information
 
-- **ROCm Version**: 7.2
-- **Source**: rocm/dev-ubuntu-24.04:7.2-complete
-- **Compatible with**: llama.cpp binaries built for ROCm 7.2
+- **ROCm Version**: 7.2.1
+- **Source**: rocm/dev-ubuntu-24.04:7.2.1-complete
+- **Compatible with**: llama.cpp binaries built for ROCm 7.2.1
 
 ## License
 

@@ -1,25 +1,25 @@
 #!/bin/bash
-# Build script for ROCm 7.2 runtime library bundle (Native version)
+# Build script for ROCm 7.2.1 runtime library bundle (Native version)
 # This script downloads ROCm packages from the official repository and extracts them
 # to create a standalone distribution without using Docker.
 
 set -e
 
-ROCM_VERSION="7.2"
+ROCM_VERSION="7.2.1"
 UBUNTU_CODENAME="noble"
 BASE_URL="https://repo.radeon.com/rocm/apt/${ROCM_VERSION}/pool/main"
 GPU_TARGETS="gfx1030;gfx1031;gfx1032;gfx1100;gfx1101;gfx1102;gfx1151;gfx1150;gfx1200;gfx1201"
 
 # Packages to download (based on Dockerfile extraction)
 PACKAGES=(
-    "c/comgr7.2.0/comgr7.2.0_3.0.0.70200-43~24.04_amd64.deb"
-    "h/hip-runtime-amd7.2.0/hip-runtime-amd7.2.0_7.2.26015.70200-43~24.04_amd64.deb"
-    "h/hipblas7.2.0/hipblas7.2.0_3.2.0.70200-43~24.04_amd64.deb"
-    "h/hipblaslt7.2.0/hipblaslt7.2.0_1.2.1.70200-43~24.04_amd64.deb"
-    "h/hsa-rocr7.2.0/hsa-rocr7.2.0_1.18.0.70200-43~24.04_amd64.deb"
-    "h/hsa-rocr-dev7.2.0/hsa-rocr-dev7.2.0_1.18.0.70200-43~24.04_amd64.deb"
-    "r/rocblas7.2.0/rocblas7.2.0_5.2.0.70200-43~24.04_amd64.deb"
-    "r/rocsparse7.2.0/rocsparse7.2.0_4.2.0.70200-43~24.04_amd64.deb"
+    "c/comgr7.2.1/comgr7.2.1_3.0.0.70201-81~24.04_amd64.deb"
+    "h/hip-runtime-amd7.2.1/hip-runtime-amd7.2.1_7.2.53211.70201-81~24.04_amd64.deb"
+    "h/hipblas7.2.1/hipblas7.2.1_3.2.0.70201-81~24.04_amd64.deb"
+    "h/hipblaslt7.2.1/hipblaslt7.2.1_1.2.2.70201-81~24.04_amd64.deb"
+    "h/hsa-rocr7.2.1/hsa-rocr7.2.1_1.18.0.70201-81~24.04_amd64.deb"
+    "h/hsa-rocr-dev7.2.1/hsa-rocr-dev7.2.1_1.18.0.70201-81~24.04_amd64.deb"
+    "r/rocblas7.2.1/rocblas7.2.1_5.2.0.70201-81~24.04_amd64.deb"
+    "r/rocsparse7.2.1/rocsparse7.2.1_4.2.0.70201-81~24.04_amd64.deb"
 )
 
 TEMP_DIR="tmp_extract"
