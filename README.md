@@ -114,70 +114,11 @@ export LD_LIBRARY_PATH=/path/to/rocm-7.2.1-runtime:${LD_LIBRARY_PATH}
 export ROCM_PATH=/path/to/rocm-7.2.1-runtime
 ```
 
-### GPU Architecture Override
-
-Some GPUs may require architecture version override:
-
-```bash
-export HSA_OVERRIDE_GFX_VERSION=<version>
-```
-
-Common values:
-- `9.0.6` - Radeon VII, MI50/60
-- `9.0.8` - MI100
-- `9.0.a` - MI210/250
-- `10.3.0` - RX 6900 XT, RX 6800 XT
-- `11.0.0` - RX 7900 XTX, RX 7900 XT
-- `11.0.1` - RX 7600, RX 7700/7800 XT
-
-## Building from Source
-
-### Prerequisites
-
-- `bash`
-- `wget`
-- `tar`
-- `ar` (usually part of `binutils`)
-- `zstd` (for extracting some `.deb` packages)
-- ~10GB free disk space (mostly for temporary extraction)
-
-### Build Steps
-
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/YOUR-USERNAME/rocm-7.2.1.git
-   cd rocm-7.2.1
-   ```
-
-2. Run the build script:
-   ```bash
-   chmod +x build.sh
-   ./build.sh
-   ```
-
-3. The script will:
-   - Download official ROCm 7.2.1 `.deb` packages from the AMD repository
-   - Extract runtime libraries and kernels without installing them to your system
-   - Create a portable `rocm-7.2.1-runtime-libs.tar.gz` bundle
-
-4. Find the bundle in the current directory:
-   ```bash
-   ls -lh rocm-7.2.1-runtime-libs.tar.gz
-   ```
-
 ## Compatibility
 
 ### llama.cpp Versions
 
-This bundle is compatible with llama.cpp binaries built for ROCm 7.2.1. Check the llama.cpp release notes to ensure you're downloading the correct binaries.
-
-Example compatible releases:
-- llama.cpp `b8192` and later (Ubuntu ROCm 7.2.1 builds)
-- Any llama.cpp binary tagged with `rocm-7.2.1`
-
-### ROCm Version
-
-This bundle is specifically for **ROCm 7.2.1**. Using it with binaries built for other ROCm versions (6.x, 7.0, 7.1) may result in undefined behavior or crashes.
+This bundle is compatible with llama.cpp binaries built for ROCm 7.2 and 7.2.1. Check the llama.cpp release notes to ensure you're downloading the correct binaries.
 
 ## Troubleshooting
 
@@ -199,112 +140,6 @@ Or manually set `LD_LIBRARY_PATH`:
 export LD_LIBRARY_PATH=/path/to/rocm-7.2.1-runtime:${LD_LIBRARY_PATH}
 ```
 
-### GPU Not Detected
-
-**Error:**
-```
-ggml_init_cublas: GGML_CUDA_FORCE_MMQ:   no
-ggml_init_cublas: CUDA_USE_TENSOR_CORES: yes
-ggml_init_cublas: found 0 ROCm devices:
-```
-
-**Solutions:**
-
-1. Verify AMDGPU driver is loaded:
-   ```bash
-   lsmod | grep amdgpu
-   ```
-
-2. Check GPU devices exist:
-   ```bash
-   ls /dev/dri/
-   ```
-   You should see `renderD128` or similar devices.
-
-3. Ensure your user has access to GPU devices:
-   ```bash
-   groups
-   ```
-   You should be in the `video` or `render` group. If not:
-   ```bash
-   sudo usermod -a -G video,render $USER
-   # Log out and back in
-   ```
-
-### GPU Architecture Mismatch
-
-**Error:**
-```
-HSA Error: Incompatible kernel
-```
-
-**Solution:**
-Set the GPU architecture override:
-```bash
-export HSA_OVERRIDE_GFX_VERSION=<your_version>
-```
-
-Find your GPU version:
-```bash
-rocminfo | grep gfx
-```
-
-### Performance Issues
-
-If you experience poor performance:
-
-1. **Check GPU utilization:**
-   ```bash
-   watch -n 1 rocm-smi
-   ```
-
-2. **Verify power management:**
-   Some GPUs may be in power-saving mode. Check your GPU power state.
-
-3. **Monitor thermals:**
-   Ensure adequate cooling and that the GPU isn't thermal throttling.
-
-## How It Works
-
-### Extraction Process
-
-1. The `build.sh` script downloads official ROCm 7.2.1 `.deb` packages for Ubuntu 24.04 (Noble)
-2. It uses `ar` and `tar` to extract the package contents without requiring root or a package manager
-3. It copies essential runtime libraries and GPU kernel directories (`rocblas/`, `hipblaslt/`)
-4. It packages everything with helper scripts into a portable tarball
-
-### Why This Approach?
-
-- **Portable**: No system installation required
-- **Isolated**: Doesn't conflict with existing ROCm installations
-- **Minimal**: Only includes runtime libraries, not development tools
-- **Flexible**: Users can easily switch between ROCm versions
-
-## Automated Releases
-
-This repository uses GitHub Actions to automatically build and release the ROCm runtime bundle when tags are pushed:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The workflow will:
-1. Build the Docker image
-2. Extract the runtime bundle
-3. Generate checksums
-4. Create a GitHub release with the bundle attached
-
-## Contributing
-
-Contributions are welcome! Please feel free to:
-- Report issues
-- Suggest improvements
-- Submit pull requests
-- Share your use cases
-
-## License
-
 This repository's build scripts and documentation are released under the MIT License.
 
 The ROCm libraries themselves are licensed under MIT and Apache 2.0 licenses by AMD. See the [ROCm repository](https://github.com/RadeonOpenCompute/ROCm) for details.
@@ -312,7 +147,7 @@ The ROCm libraries themselves are licensed under MIT and Apache 2.0 licenses by 
 ## Disclaimer
 
 This is an **unofficial** redistribution of ROCm runtime libraries for convenience. For official ROCm releases and support, visit:
-- [ROCm GitHub](https://github.com/RadeonOpenCompute/ROCm)
+- [ROCm GitHub](https://github.com/ROCm/ROCm)
 - [ROCm Documentation](https://rocm.docs.amd.com/)
 
 ## Acknowledgments
@@ -324,8 +159,7 @@ This is an **unofficial** redistribution of ROCm runtime libraries for convenien
 ## Related Projects
 
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) - Fast LLM inference
-- [ROCm](https://github.com/RadeonOpenCompute/ROCm) - AMD GPU compute platform
-- [HIP](https://github.com/ROCm-Developer-Tools/HIP) - GPU runtime API
+- [ROCm](https://github.com/ROCm/ROCm) - AMD GPU compute platform
 
 ## Support
 
