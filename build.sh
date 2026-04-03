@@ -99,6 +99,12 @@ if [ -d "${STAGING_DIR}/cmake" ]; then
     rm -rf "${STAGING_DIR}/cmake"
 fi
 
+# Step 3.5: Create version file
+echo "Step 3.5: Creating version information..."
+mkdir -p "${STAGING_DIR}/.info"
+echo "${ROCM_VERSION}" > "${STAGING_DIR}/.info/version"
+echo "  Created version file: ${STAGING_DIR}/.info/version"
+
 # Step 4: Filter tensile libraries for GPU_TARGETS
 echo "Step 4: Filtering tensile libraries for GPU_TARGETS..."
 
