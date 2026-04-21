@@ -21,6 +21,8 @@ PACKAGES=(
     "r/rocblas7.2.1/rocblas7.2.1_5.2.0.70201-81~24.04_amd64.deb"
     "r/rocsparse7.2.1/rocsparse7.2.1_4.2.0.70201-81~24.04_amd64.deb"
     "r/rocsolver7.2.1/rocsolver7.2.1_3.32.0.70201-81~24.04_amd64.deb"
+    "r/rocprofiler-register7.2.1/rocprofiler-register7.2.1_0.6.0.70201-81~24.04_amd64.deb"
+    "r/roctracer7.2.1/roctracer7.2.1_4.1.70201.70201-81~24.04_amd64.deb"
 )
 
 TEMP_DIR="tmp_extract"
