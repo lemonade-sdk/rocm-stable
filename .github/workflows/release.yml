@@ -1,4 +1,4 @@
-name: Build and Release ROCm Runtime Bundle
+name: Build and Release ROCm SDK Bundle
 
 on:
   push:
@@ -18,8 +18,12 @@ permissions:
 
 jobs:
   build:
-    name: Build ROCm Runtime Package
+    name: Build ROCm SDK Package
     runs-on: ubuntu-latest
+
+    outputs:
+      rocm_version: ${{ steps.ver.outputs.rocm_version }}
+      bundle_name: ${{ steps.ver.outputs.bundle_name }}
 
     steps:
       - name: Checkout repository
@@ -41,32 +45,44 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y binutils zstd
 
-      - name: Build ROCm runtime bundle
+      - name: Read ROCm version from build.sh
+        id: ver
+        run: |
+          rocm_version=$(grep '^ROCM_VERSION=' build.sh | cut -d'"' -f2)
+          bundle_name="rocm-${rocm_version}-sdk.tar.gz"
+          echo "rocm_version=${rocm_version}" >> $GITHUB_OUTPUT
+          echo "bundle_name=${bundle_name}" >> $GITHUB_OUTPUT
+          echo "ROCm version: ${rocm_version}"
+          echo "Bundle name: ${bundle_name}"
+
+      - name: Build ROCm SDK bundle
         run: |
           chmod +x build.sh
           ./build.sh
 
       - name: Verify package was created
         run: |
-          if [ ! -f rocm-7.2.1-runtime-libs.tar.gz ]; then
-            echo "Error: Package file not found!"
+          bundle="${{ steps.ver.outputs.bundle_name }}"
+          if [ ! -f "${bundle}" ]; then
+            echo "Error: ${bundle} not found!"
             exit 1
           fi
-          echo "Package size: $(du -h rocm-7.2.1-runtime-libs.tar.gz | cut -f1)"
+          echo "Package size: $(du -h ${bundle} | cut -f1)"
           echo "Package created successfully"
 
       - name: Generate checksums
         run: |
-          sha256sum rocm-7.2.1-runtime-libs.tar.gz > rocm-7.2.1-runtime-libs.tar.gz.sha256
-          cat rocm-7.2.1-runtime-libs.tar.gz.sha256
+          bundle="${{ steps.ver.outputs.bundle_name }}"
+          sha256sum "${bundle}" > "${bundle}.sha256"
+          cat "${bundle}.sha256"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rocm-runtime-bundle
+          name: rocm-sdk-bundle
           path: |
-            rocm-7.2.1-runtime-libs.tar.gz
-            rocm-7.2.1-runtime-libs.tar.gz.sha256
+            ${{ steps.ver.outputs.bundle_name }}
+            ${{ steps.ver.outputs.bundle_name }}.sha256
           retention-days: 5
 
   release:
@@ -82,7 +98,7 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: rocm-runtime-bundle
+          name: rocm-sdk-bundle
 
       - name: Extract version from tag
         id: version
@@ -92,76 +108,75 @@ jobs:
 
       - name: Create release notes
         id: release_notes
+        env:
+          ROCM_VERSION: ${{ needs.build.outputs.rocm_version }}
+          BUNDLE: ${{ needs.build.outputs.bundle_name }}
         run: |
-          cat > release_notes.md << 'EOF'
-          # ROCm 7.2.1 Runtime Libraries Bundle
+          cat > release_notes.md << EOF
+          # ROCm ${ROCM_VERSION} SDK Bundle
 
-          This release provides a standalone bundle of ROCm 7.2.1 runtime libraries for use with llama.cpp and other HIP-enabled applications.
+          A standalone bundle of the ROCm ${ROCM_VERSION} SDK — compiler, headers,
+          cmake configs, and runtime libraries — pulled from
+          https://repo.radeon.com/rocm/apt/${ROCM_VERSION}/ and laid out as a
+          drop-in replacement for \`/opt/rocm\`. Use it to build and run
+          HIP-enabled applications without installing ROCm system-wide.
 
-          ## What's Included
+          ## What's included
 
-          ### Core Runtime Libraries
-          - `libamdhip64.so*` - HIP runtime
-          - `libhsa-runtime64.so*` - HSA runtime
-          - `libhipblas.so*` - HIP BLAS library
-          - `libhipblaslt.so*` - HIP BLAS LT library
-          - `librocblas.so*` - ROCm BLAS library
-          - `librocsparse.so*` - ROCm sparse linear algebra
-          - Additional supporting libraries (comgr, hsakmt, drm)
+          ### Compiler toolchain
+          - \`amdclang\` / \`amdclang++\` (HIP-aware Clang driver)
+          - \`hipcc\` driver wrapper
+          - rocm-llvm, rocm-device-libs, rocm-cmake
 
-          ### GPU Kernel Files
-          - `rocblas/` directory with GPU kernels
-          - `hipblaslt/` directory with GPU kernels
+          ### HIP runtime + headers
+          - libamdhip64 + \`include/hip/\`
+          - libhsa-runtime64 + \`include/hsa/\`
+          - hipconfig, rocminfo, rocm-smi
 
-          ### Helper Scripts
-          - `setup-env.sh` - Environment configuration script
-          - `README.md` - Detailed usage instructions
+          ### Math libraries (runtime + dev headers)
+          - rocBLAS, hipBLAS, hipBLASLt
+          - rocSPARSE, hipSPARSE
+          - rocSOLVER, hipSOLVER
+          - rocRAND, hipRAND
 
-          ## System Requirements
+          ### Template libraries (header-only)
+          - rocPRIM, rocThrust, hipCUB, rocWMMA
+
+          ### GPU kernel files (filtered to supported targets)
+          - rocBLAS Tensile kernels
+          - hipBLASLt kernels
+          - composable-kernel
+
+          ## System requirements
 
           - AMD GPU with ROCm support
           - Linux with AMDGPU driver
           - No system ROCm installation required
 
-          ## Compatible With
+          ## Quick start
 
-          - llama.cpp binaries built for ROCm 7.2.1
-          - Other applications compiled against ROCm 7.2.1
+          \`\`\`bash
+          # Download
+          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${BUNDLE}
 
-          ## Quick Start
+          # Extract to /opt/rocm
+          sudo mkdir -p /opt/rocm
+          sudo tar -xzf ${BUNDLE} -C /opt/rocm
 
-          ```bash
-          # Download and extract
-          tar -xzf rocm-7.2.1-runtime-libs.tar.gz
-
-          # Configure environment
-          source rocm-7.2.1-runtime/setup-env.sh
-
-          # Run your HIP-enabled application
-          ./llama-cli --version
-          ```
-
-          ## Using with llama.cpp
-
-          1. Download llama.cpp ROCm binaries from: https://github.com/ggml-org/llama.cpp/releases
-          2. Download this ROCm runtime bundle
-          3. Extract both archives
-          4. Source the `setup-env.sh` script from this bundle
-          5. Run llama.cpp binaries
-
-          See the included README.md for detailed instructions and troubleshooting.
+          # Verify the compiler
+          /opt/rocm/bin/amdclang --version
+          \`\`\`
 
           ## Verification
 
           **SHA256 Checksum:**
-          ```
-          $(cat rocm-7.2.1-runtime-libs.tar.gz.sha256)
-          ```
+          \`\`\`
+          \$(cat ${BUNDLE}.sha256)
+          \`\`\`
 
-          Verify with:
-          ```bash
-          sha256sum -c rocm-7.2.1-runtime-libs.tar.gz.sha256
-          ```
+          \`\`\`bash
+          sha256sum -c ${BUNDLE}.sha256
+          \`\`\`
 
           ## License
 
@@ -169,7 +184,9 @@ jobs:
 
           ---
 
-          **Note:** This is an unofficial redistribution of ROCm runtime libraries for convenience. For official ROCm releases, visit: https://github.com/RadeonOpenCompute/ROCm
+          **Note:** This is an unofficial redistribution of the ROCm SDK for
+          convenience. For official ROCm releases, visit:
+          https://github.com/RadeonOpenCompute/ROCm
           EOF
 
           echo "Release notes generated"
@@ -177,11 +194,11 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          name: ROCm 7.2.1 Runtime Bundle ${{ steps.version.outputs.VERSION }}
+          name: ROCm ${{ needs.build.outputs.rocm_version }} SDK Bundle ${{ steps.version.outputs.VERSION }}
           body_path: release_notes.md
           files: |
-            rocm-7.2.1-runtime-libs.tar.gz
-            rocm-7.2.1-runtime-libs.tar.gz.sha256
+            ${{ needs.build.outputs.bundle_name }}
+            ${{ needs.build.outputs.bundle_name }}.sha256
           draft: false
           prerelease: false
         env:
