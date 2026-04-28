@@ -49,7 +49,7 @@ jobs:
         id: ver
         run: |
           rocm_version=$(grep '^ROCM_VERSION=' build.sh | cut -d'"' -f2)
-          bundle_name="rocm-${rocm_version}-sdk.tar.gz"
+          bundle_name="rocm-${rocm_version}-runtime-libs.tar.gz"
           echo "rocm_version=${rocm_version}" >> $GITHUB_OUTPUT
           echo "bundle_name=${bundle_name}" >> $GITHUB_OUTPUT
           echo "ROCm version: ${rocm_version}"
@@ -79,7 +79,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rocm-sdk-bundle
+          name: rocm-runtime-bundle
           path: |
             ${{ steps.ver.outputs.bundle_name }}
             ${{ steps.ver.outputs.bundle_name }}.sha256
@@ -98,7 +98,7 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: rocm-sdk-bundle
+          name: rocm-runtime-bundle
 
       - name: Extract version from tag
         id: version

@@ -191,10 +191,10 @@ done < <(find "${STAGING_DIR}" -type f \( -name "*TensileLibrary*" -o -name "*Ke
 
 # Step 5: Create the final tarball
 echo "Step 5: Creating the final tarball..."
-TARBALL="rocm-${ROCM_VERSION}-sdk.tar.gz"
+TARBALL="rocm-${ROCM_VERSION}-runtime-libs.tar.gz"
 tar -czf "${TARBALL}" -C "${STAGING_DIR}" .
 
-echo "Done! ROCm SDK bundle created: ${TARBALL}"
+echo "Done! ROCm bundle created: ${TARBALL}"
 TARBALL_SIZE=$(du -h "${TARBALL}" | cut -f1)
 echo "Size: ${TARBALL_SIZE}"
 
