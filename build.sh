@@ -15,7 +15,7 @@ BASE_URL="https://repo.radeon.com/rocm/apt/${ROCM_VERSION}/pool/main"
 
 # Trim tensile / kernel libraries to the gfx targets we actually ship for.
 # Add new archs here when AMD enables WMMA on them in this ROCm release.
-GPU_TARGETS="gfx908;gfx90a;gfx942;gfx1100;gfx1101;gfx1102;gfx1150;gfx1151;gfx1200;gfx1201"
+GPU_TARGETS="gfx908;gfx90a;gfx942;gfx1030;gfx1031;gfx1032;gfx1100;gfx1101;gfx1102;gfx1103;gfx1151;gfx1150;gfx1200;gfx1201"
 
 # Full SDK package set (compiler + headers + runtime libs).
 PACKAGES=(
