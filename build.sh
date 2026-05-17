@@ -1,10 +1,11 @@
 #!/bin/bash
-# Build script for five ROCm artifacts:
+# Build script for six ROCm artifacts:
 #   1. rocm-<ver>-runtime-libs.tar.gz   - runtime library bundle
-#   2. rocm-<ver>-sdk-compiler.tar.gz   - compiler, headers, cmake, dev files
-#   3. rocm-<ver>-sdk-core-libs.tar.gz  - core shared libraries (HIP, HSA, LLVM)
-#   4. rocm-<ver>-sdk-blas.tar.gz       - rocBLAS, hipBLAS, hipBLASLt + Tensile kernels
-#   5. rocm-<ver>-sdk-math.tar.gz       - rocSPARSE, rocSOLVER, random libs, etc.
+#   2. rocm-<ver>-sdk-compiler.tar.gz   - compiler binaries, headers, cmake, share
+#   3. rocm-<ver>-sdk-device-libs.tar.gz - device library bitcode (.bc, .hsaco, .co)
+#   4. rocm-<ver>-sdk-core-libs.tar.gz  - core shared libraries (HIP, HSA, LLVM)
+#   5. rocm-<ver>-sdk-blas.tar.gz       - rocBLAS, hipBLAS, hipBLASLt + Tensile kernels
+#   6. rocm-<ver>-sdk-math.tar.gz       - rocSPARSE, rocSOLVER, random libs, etc.
 #
 # All tarballs are extracted from the official AMD ROCm .deb packages
 # (no apt / repo.radeon.com needed at consume time).
@@ -143,12 +144,22 @@ should_keep_file() {
         if [[ "${filename}" == *"${gpu}"* ]]; then
             return 0
         fi
+        # Also check for ISA version number in .bc files (e.g., isa_version_1030)
+        local isa_version="${gpu#gfx}"
+        if [[ "${filename}" == *"isa_version_${isa_version}"* ]]; then
+            return 0
+        fi
     done
 
+    # Reject non-target GPU architectures (CDNA)
     if [[ "${filename}" == *"gfx908"* ]] || \
        [[ "${filename}" == *"gfx90a"* ]] || \
        [[ "${filename}" == *"gfx942"* ]] || \
-       [[ "${filename}" == *"gfx950"* ]]; then
+       [[ "${filename}" == *"gfx950"* ]] || \
+       [[ "${filename}" == *"isa_version_906"* ]] || \
+       [[ "${filename}" == *"isa_version_908"* ]] || \
+       [[ "${filename}" == *"isa_version_942"* ]] || \
+       [[ "${filename}" == *"isa_version_950"* ]]; then
         return 1
     fi
 
@@ -168,6 +179,20 @@ filter_gpu_libs() {
             rm -f "${libfile}"
         fi
     done < <(find "${staging_dir}" -type f \( -name "*TensileLibrary*" -o -name "*Kernels.so*" -o -name "extop_*" \))
+}
+
+# Filter device library bitcode files (.bc, .hsaco, .co) for unsupported GPUs.
+# This removes bitcode for CDNA architectures (gfx908, gfx90a, gfx942, gfx950)
+# while keeping files for our target RDNA architectures (gfx103x, gfx110x, gfx120x).
+filter_device_libs() {
+    local staging_dir="$1"
+    while IFS= read -r libfile; do
+        basename=$(basename "${libfile}")
+        if ! should_keep_file "${basename}" "${GPU_TARGETS}"; then
+            echo "  Removing unsupported GPU device lib: ${basename}"
+            rm -f "${libfile}"
+        fi
+    done < <(find "${staging_dir}" -maxdepth 1 -type f \( -name '*.bc' -o -name '*.hsaco' -o -name '*.co' -o -name '*.dat' \))
 }
 
 # ---- Runtime bundle: mirror main's layout exactly (lib/* only, no cmake) ----
@@ -269,9 +294,13 @@ echo "${ROCM_VERSION}" > "${SDK_STAGING}/.info/version"
 echo "Step 4: Filtering tensile libraries for GPU_TARGETS..."
 filter_gpu_libs "${SDK_STAGING}"
 
-echo "Step 5: Splitting SDK into four content-based artifacts..."
+echo "Step 4.5: Filtering device library bitcode for GPU_TARGETS..."
+filter_device_libs "${SDK_STAGING}"
+
+echo "Step 5: Splitting SDK into five content-based artifacts..."
 
 SDK_COMPILER="rocm-${ROCM_VERSION}-sdk-compiler.tar.gz"
+SDK_DEVICE_LIBS="rocm-${ROCM_VERSION}-sdk-device-libs.tar.gz"
 SDK_CORE_LIBS="rocm-${ROCM_VERSION}-sdk-core-libs.tar.gz"
 SDK_BLAS="rocm-${ROCM_VERSION}-sdk-blas.tar.gz"
 SDK_MATH="rocm-${ROCM_VERSION}-sdk-math.tar.gz"
@@ -308,12 +337,13 @@ SDK_MATH_LIBS=(
 
 # --- Create component staging directories ---
 STAGING_COMPILER="${SDK_STAGING}-compiler"
+STAGING_DEVICE_LIBS="${SDK_STAGING}-device-libs"
 STAGING_CORE_LIBS="${SDK_STAGING}-core-libs"
 STAGING_BLAS="${SDK_STAGING}-blas"
 STAGING_MATH="${SDK_STAGING}-math"
 
-rm -rf "${STAGING_COMPILER}" "${STAGING_CORE_LIBS}" "${STAGING_BLAS}" "${STAGING_MATH}"
-mkdir -p "${STAGING_COMPILER}" "${STAGING_CORE_LIBS}" "${STAGING_BLAS}" "${STAGING_MATH}"
+rm -rf "${STAGING_COMPILER}" "${STAGING_DEVICE_LIBS}" "${STAGING_CORE_LIBS}" "${STAGING_BLAS}" "${STAGING_MATH}"
+mkdir -p "${STAGING_COMPILER}" "${STAGING_DEVICE_LIBS}" "${STAGING_CORE_LIBS}" "${STAGING_BLAS}" "${STAGING_MATH}"
 
 # ---- sdk-blas ----
 echo "  Partitioning: sdk-blas (BLAS libraries + Tensile kernels)..."
@@ -386,6 +416,31 @@ find "${SDK_STAGING}/lib" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) \( -t
     echo "    + lib/${fname}"
 done
 
+# ---- sdk-device-libs: lib/ non-.so* files (device library bitcode) ----
+echo "  Partitioning: sdk-device-libs (device library bitcode)..."
+
+mkdir -p "${STAGING_DEVICE_LIBS}/lib"
+
+(cd "${SDK_STAGING}/lib" && find . -maxdepth 1 -type f ! -name '*.so' ! -name '*.so.*') | while IFS= read -r entry; do
+    fname=$(basename "${entry}")
+    skip=false
+
+    # Skip if matches BLAS pattern
+    for lib in "${SDK_BLAS_LIBS[@]}"; do
+        eval "case \"\${fname}\" in ${lib}) skip=true; break ;; esac"
+    done
+    [ "${skip}" = true ] && continue
+
+    # Skip if matches MATH pattern
+    for lib in "${SDK_MATH_LIBS[@]}"; do
+        eval "case \"\${fname}\" in ${lib}) skip=true; break ;; esac"
+    done
+    [ "${skip}" = true ] && continue
+
+    cp -a "${SDK_STAGING}/lib/${fname}" "${STAGING_DEVICE_LIBS}/lib/"
+    echo "    + lib/${fname}"
+done
+
 # ---- sdk-compiler: everything else (bin, include, cmake, share, etc.) ----
 echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
 
@@ -409,12 +464,9 @@ echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
     done
     [ "${skip}" = true ] && continue
 
-    # Skip lib/*.so* files (they go to core-libs, blas, or math)
+    # Skip lib/ files (they go to core-libs, blas, math, or device-libs)
     if [[ "$(dirname "${rel}")" == "lib" ]]; then
-        fname=$(basename "${rel}")
-        if [[ "$fname" == *.so || "$fname" == *.so.* ]]; then
-            skip=true
-        fi
+        skip=true
     fi
     [ "${skip}" = true ] && continue
 
@@ -430,6 +482,10 @@ tar -czf "${SDK_COMPILER}" -C "${STAGING_COMPILER}" .
 SDK_COMPILER_SIZE=$(du -h "${SDK_COMPILER}" | cut -f1)
 echo "    sdk-compiler:   ${SDK_COMPILER} (${SDK_COMPILER_SIZE})"
 
+tar -czf "${SDK_DEVICE_LIBS}" -C "${STAGING_DEVICE_LIBS}" .
+SDK_DEVICE_LIBS_SIZE=$(du -h "${SDK_DEVICE_LIBS}" | cut -f1)
+echo "    sdk-device-libs: ${SDK_DEVICE_LIBS} (${SDK_DEVICE_LIBS_SIZE})"
+
 tar -czf "${SDK_CORE_LIBS}" -C "${STAGING_CORE_LIBS}" .
 SDK_CORE_LIBS_SIZE=$(du -h "${SDK_CORE_LIBS}" | cut -f1)
 echo "    sdk-core-libs:  ${SDK_CORE_LIBS} (${SDK_CORE_LIBS_SIZE})"
@@ -442,12 +498,13 @@ tar -czf "${SDK_MATH}" -C "${STAGING_MATH}" .
 SDK_MATH_SIZE=$(du -h "${SDK_MATH}" | cut -f1)
 echo "    sdk-math:       ${SDK_MATH} (${SDK_MATH_SIZE})"
 
-rm -rf "${STAGING_COMPILER}" "${STAGING_CORE_LIBS}" "${STAGING_BLAS}" "${STAGING_MATH}" "${SDK_TEMP}" "${SDK_DIST}" "${SDK_STAGING}"
+rm -rf "${STAGING_COMPILER}" "${STAGING_DEVICE_LIBS}" "${STAGING_CORE_LIBS}" "${STAGING_BLAS}" "${STAGING_MATH}" "${SDK_TEMP}" "${SDK_DIST}" "${SDK_STAGING}"
 
 echo ""
-echo "Done! Built five bundles:"
+echo "Done! Built six bundles:"
 echo "  - ${RUNTIME_TARBALL} (${RUNTIME_SIZE})"
 echo "  - ${SDK_COMPILER} (${SDK_COMPILER_SIZE})"
+echo "  - ${SDK_DEVICE_LIBS} (${SDK_DEVICE_LIBS_SIZE})"
 echo "  - ${SDK_CORE_LIBS} (${SDK_CORE_LIBS_SIZE})"
 echo "  - ${SDK_BLAS} (${SDK_BLAS_SIZE})"
 echo "  - ${SDK_MATH} (${SDK_MATH_SIZE})"

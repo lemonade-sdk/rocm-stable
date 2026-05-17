@@ -25,6 +25,7 @@ jobs:
       rocm_version: ${{ steps.ver.outputs.rocm_version }}
       runtime_bundle: ${{ steps.ver.outputs.runtime_bundle }}
       sdk_compiler: ${{ steps.ver.outputs.sdk_compiler }}
+      sdk_device_libs: ${{ steps.ver.outputs.sdk_device_libs }}
       sdk_core_libs: ${{ steps.ver.outputs.sdk_core_libs }}
       sdk_blas: ${{ steps.ver.outputs.sdk_blas }}
       sdk_math: ${{ steps.ver.outputs.sdk_math }}
@@ -55,6 +56,7 @@ jobs:
           rocm_version=$(grep '^ROCM_VERSION=' build.sh | cut -d'"' -f2)
           runtime_bundle="rocm-${rocm_version}-runtime-libs.tar.gz"
           sdk_compiler="rocm-${rocm_version}-sdk-compiler.tar.gz"
+          sdk_device_libs="rocm-${rocm_version}-sdk-device-libs.tar.gz"
           sdk_core_libs="rocm-${rocm_version}-sdk-core-libs.tar.gz"
           sdk_blas="rocm-${rocm_version}-sdk-blas.tar.gz"
           sdk_math="rocm-${rocm_version}-sdk-math.tar.gz"
@@ -68,6 +70,7 @@ jobs:
           echo "Runtime bundle:    ${runtime_bundle}"
           echo "SDK compiler:      ${sdk_compiler}"
           echo "SDK core libs:     ${sdk_core_libs}"
+          echo "SDK device libs:   ${sdk_device_libs}"
           echo "SDK blas:          ${sdk_blas}"
           echo "SDK math:          ${sdk_math}"
 
@@ -80,10 +83,11 @@ jobs:
         run: |
           runtime="${{ steps.ver.outputs.runtime_bundle }}"
           compiler="${{ steps.ver.outputs.sdk_compiler }}"
+          device_libs="${{ steps.ver.outputs.sdk_device_libs }}"
           core_libs="${{ steps.ver.outputs.sdk_core_libs }}"
           blas="${{ steps.ver.outputs.sdk_blas }}"
           math="${{ steps.ver.outputs.sdk_math }}"
-          for bundle in "${runtime}" "${compiler}" "${core_libs}" "${blas}" "${math}"; do
+          for bundle in "${runtime}" "${compiler}" "${device_libs}" "${core_libs}" "${blas}" "${math}"; do
             if [ ! -f "${bundle}" ]; then
               echo "Error: ${bundle} not found!"
               exit 1
@@ -96,15 +100,17 @@ jobs:
         run: |
           runtime="${{ steps.ver.outputs.runtime_bundle }}"
           compiler="${{ steps.ver.outputs.sdk_compiler }}"
+          device_libs="${{ steps.ver.outputs.sdk_device_libs }}"
           core_libs="${{ steps.ver.outputs.sdk_core_libs }}"
           blas="${{ steps.ver.outputs.sdk_blas }}"
           math="${{ steps.ver.outputs.sdk_math }}"
-          sha256sum "${runtime}"  > "${runtime}.sha256"
-          sha256sum "${compiler}" > "${compiler}.sha256"
-          sha256sum "${core_libs}" > "${core_libs}.sha256"
-          sha256sum "${blas}"     > "${blas}.sha256"
-          sha256sum "${math}"     > "${math}.sha256"
-          cat "${runtime}.sha256" "${compiler}.sha256" "${core_libs}.sha256" "${blas}.sha256" "${math}.sha256"
+          sha256sum "${runtime}"     > "${runtime}.sha256"
+          sha256sum "${compiler}"    > "${compiler}.sha256"
+          sha256sum "${device_libs}" > "${device_libs}.sha256"
+          sha256sum "${core_libs}"   > "${core_libs}.sha256"
+          sha256sum "${blas}"        > "${blas}.sha256"
+          sha256sum "${math}"        > "${math}.sha256"
+          cat "${runtime}.sha256" "${compiler}.sha256" "${device_libs}.sha256" "${core_libs}.sha256" "${blas}.sha256" "${math}.sha256"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -115,6 +121,8 @@ jobs:
             ${{ steps.ver.outputs.runtime_bundle }}.sha256
             ${{ steps.ver.outputs.sdk_compiler }}
             ${{ steps.ver.outputs.sdk_compiler }}.sha256
+            ${{ steps.ver.outputs.sdk_device_libs }}
+            ${{ steps.ver.outputs.sdk_device_libs }}.sha256
             ${{ steps.ver.outputs.sdk_core_libs }}
             ${{ steps.ver.outputs.sdk_core_libs }}.sha256
             ${{ steps.ver.outputs.sdk_blas }}
@@ -138,26 +146,29 @@ jobs:
         run: |
           runtime="${{ needs.build.outputs.runtime_bundle }}"
           compiler="${{ needs.build.outputs.sdk_compiler }}"
+          device_libs="${{ needs.build.outputs.sdk_device_libs }}"
           core_libs="${{ needs.build.outputs.sdk_core_libs }}"
           blas="${{ needs.build.outputs.sdk_blas }}"
           math="${{ needs.build.outputs.sdk_math }}"
 
           runtime_bytes=$(stat -c%s "${runtime}")
           compiler_bytes=$(stat -c%s "${compiler}")
+          device_libs_bytes=$(stat -c%s "${device_libs}")
           core_libs_bytes=$(stat -c%s "${core_libs}")
           blas_bytes=$(stat -c%s "${blas}")
           math_bytes=$(stat -c%s "${math}")
 
-          echo "Runtime:     $(numfmt --to=iec "${runtime_bytes}") (${runtime_bytes} bytes)"
+          echo "Runtime:       $(numfmt --to=iec "${runtime_bytes}") (${runtime_bytes} bytes)"
           echo "SDK compiler:  $(numfmt --to=iec "${compiler_bytes}") (${compiler_bytes} bytes)"
+          echo "SDK dev-libs:  $(numfmt --to=iec "${device_libs_bytes}") (${device_libs_bytes} bytes)"
           echo "SDK core libs: $(numfmt --to=iec "${core_libs_bytes}") (${core_libs_bytes} bytes)"
           echo "SDK blas:      $(numfmt --to=iec "${blas_bytes}") (${blas_bytes} bytes)"
           echo "SDK math:      $(numfmt --to=iec "${math_bytes}") (${math_bytes} bytes)"
-          echo "SDK total:     $(numfmt --to=iec $((compiler_bytes + core_libs_bytes + blas_bytes + math_bytes)))"
+          echo "SDK total:     $(numfmt --to=iec $((compiler_bytes + device_libs_bytes + core_libs_bytes + blas_bytes + math_bytes)))"
 
           # Size gate: 2 GiB per-asset limit
           limit=$((2 * 1024 * 1024 * 1024))
-          for name in "Runtime:${runtime}:${runtime_bytes}" "Compiler:${compiler}:${compiler_bytes}" "Core-libs:${core_libs}:${core_libs_bytes}" "BLAS:${blas}:${blas_bytes}" "Math:${math}:${math_bytes}"; do
+          for name in "Runtime:${runtime}:${runtime_bytes}" "Compiler:${compiler}:${compiler_bytes}" "Device-libs:${device_libs}:${device_libs_bytes}" "Core-libs:${core_libs}:${core_libs_bytes}" "BLAS:${blas}:${blas_bytes}" "Math:${math}:${math_bytes}"; do
             IFS=: read -r label path bytes <<< "${name}"
             if [ "${bytes}" -gt "${limit}" ]; then
               echo "::error::${label} exceeds 2 GiB limit: $(numfmt --to=iec "${bytes}")"
@@ -170,11 +181,13 @@ jobs:
         run: |
           runtime="${{ needs.build.outputs.runtime_bundle }}"
           compiler="${{ needs.build.outputs.sdk_compiler }}"
+          device_libs="${{ needs.build.outputs.sdk_device_libs }}"
           core_libs="${{ needs.build.outputs.sdk_core_libs }}"
           blas="${{ needs.build.outputs.sdk_blas }}"
           math="${{ needs.build.outputs.sdk_math }}"
           sha256sum -c "${runtime}.sha256"
           sha256sum -c "${compiler}.sha256"
+          sha256sum -c "${device_libs}.sha256"
           sha256sum -c "${core_libs}.sha256"
           sha256sum -c "${blas}.sha256"
           sha256sum -c "${math}.sha256"
@@ -182,27 +195,31 @@ jobs:
       - name: Check no duplicate files across SDK artifacts
         run: |
           compiler="${{ needs.build.outputs.sdk_compiler }}"
+          device_libs="${{ needs.build.outputs.sdk_device_libs }}"
           core_libs="${{ needs.build.outputs.sdk_core_libs }}"
           blas="${{ needs.build.outputs.sdk_blas }}"
           math="${{ needs.build.outputs.sdk_math }}"
 
           tmp_co=$(mktemp -d)
+          tmp_dl=$(mktemp -d)
           tmp_cl=$(mktemp -d)
           tmp_bl=$(mktemp -d)
           tmp_ma=$(mktemp -d)
 
-          tar -xzf "${compiler}" -C "${tmp_co}"
-          tar -xzf "${core_libs}" -C "${tmp_cl}"
-          tar -xzf "${blas}"    -C "${tmp_bl}"
-          tar -xzf "${math}"    -C "${tmp_ma}"
+          tar -xzf "${compiler}"   -C "${tmp_co}"
+          tar -xzf "${device_libs}" -C "${tmp_dl}"
+          tar -xzf "${core_libs}"  -C "${tmp_cl}"
+          tar -xzf "${blas}"       -C "${tmp_bl}"
+          tar -xzf "${math}"       -C "${tmp_ma}"
 
           (cd "${tmp_co}" && find . -type f | sort) > /tmp/files_co.txt
+          (cd "${tmp_dl}" && find . -type f | sort) > /tmp/files_dl.txt
           (cd "${tmp_cl}" && find . -type f | sort) > /tmp/files_cl.txt
           (cd "${tmp_bl}" && find . -type f | sort) > /tmp/files_bl.txt
           (cd "${tmp_ma}" && find . -type f | sort) > /tmp/files_ma.txt
 
           has_dup=false
-          for pair in "co:cl:compiler<->core-libs" "co:bl:compiler<->blas" "co:ma:compiler<->math" "cl:bl:core-libs<->blas" "cl:ma:core-libs<->math" "bl:ma:blas<->math"; do
+          for pair in "co:dl:compiler<->dev-libs" "co:cl:compiler<->core-libs" "co:bl:compiler<->blas" "co:ma:compiler<->math" "dl:cl:dev-libs<->core-libs" "dl:bl:dev-libs<->blas" "dl:ma:dev-libs<->math" "cl:bl:core-libs<->blas" "cl:ma:core-libs<->math" "bl:ma:blas<->math"; do
             IFS=: read -r a b label <<< "${pair}"
             dup=$(comm -12 "/tmp/files_${a}.txt" "/tmp/files_${b}.txt")
             if [ -n "${dup}" ]; then
@@ -212,7 +229,7 @@ jobs:
             fi
           done
 
-          rm -rf "${tmp_co}" "${tmp_cl}" "${tmp_bl}" "${tmp_ma}"
+          rm -rf "${tmp_co}" "${tmp_dl}" "${tmp_cl}" "${tmp_bl}" "${tmp_ma}"
 
           if [ "${has_dup}" = true ]; then
             exit 1
@@ -276,6 +293,7 @@ jobs:
           ROCM_VERSION: ${{ needs.build.outputs.rocm_version }}
           RUNTIME_BUNDLE: ${{ needs.build.outputs.runtime_bundle }}
           SDK_COMPILER: ${{ needs.build.outputs.sdk_compiler }}
+          SDK_DEVICE_LIBS: ${{ needs.build.outputs.sdk_device_libs }}
           SDK_CORE_LIBS: ${{ needs.build.outputs.sdk_core_libs }}
           SDK_BLAS: ${{ needs.build.outputs.sdk_blas }}
           SDK_MATH: ${{ needs.build.outputs.sdk_math }}
@@ -283,7 +301,7 @@ jobs:
           cat > release_notes.md << EOF
           # ROCm ${ROCM_VERSION} Bundles
 
-          Five modular ROCm ${ROCM_VERSION} bundles pulled from
+          Six modular ROCm ${ROCM_VERSION} bundles pulled from
           https://repo.radeon.com/rocm/apt/${ROCM_VERSION}/ and laid out as
           drop-in replacements for \`/opt/rocm\`. Extract to the same directory
           to overlay into a complete tree.
@@ -292,6 +310,7 @@ jobs:
           |--------|------|---------|
           | Runtime | \`${RUNTIME_BUNDLE}\` | Run HIP applications |
           | SDK Compiler | \`${SDK_COMPILER}\` | Compiler, headers, cmake, dev files |
+          | SDK Device Libs | \`${SDK_DEVICE_LIBS}\` | Device library bitcode (.bc, .hsaco) |
           | SDK Core Libs | \`${SDK_CORE_LIBS}\` | HIP, HSA, LLVM shared libraries |
           | SDK BLAS | \`${SDK_BLAS}\` | rocBLAS, hipBLAS, hipBLASLt + Tensile kernels |
           | SDK Math | \`${SDK_MATH}\` | rocSPARSE, rocSOLVER, random libs, etc. |
@@ -300,6 +319,8 @@ jobs:
             *run* HIP-enabled applications (e.g. llama.cpp ROCm builds).
           - **\`${SDK_COMPILER}\`** -- compiler toolchain, headers, cmake.
             Use this to *build* HIP code.
+          - **\`${SDK_DEVICE_LIBS}\`** -- device library bitcode for RDNA GPUs.
+            Required for GPU code compilation.
           - **\`${SDK_CORE_LIBS}\`** -- core shared libraries (HIP, HSA, LLVM).
             Required for compilation with rocBLAS/hipBLAS/etc.
           - **\`${SDK_BLAS}\`** -- BLAS libraries with Tensile kernels.
@@ -329,11 +350,13 @@ jobs:
 
           \`\`\`bash
           curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_COMPILER}
+          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_DEVICE_LIBS}
           curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_CORE_LIBS}
           curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_BLAS}
           curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_MATH}
           sudo mkdir -p /opt/rocm
           sudo tar -xzf ${SDK_COMPILER} -C /opt/rocm
+          sudo tar -xzf ${SDK_DEVICE_LIBS} -C /opt/rocm
           sudo tar -xzf ${SDK_CORE_LIBS} -C /opt/rocm
           sudo tar -xzf ${SDK_BLAS} -C /opt/rocm
           sudo tar -xzf ${SDK_MATH} -C /opt/rocm
@@ -344,10 +367,12 @@ jobs:
 
           \`\`\`bash
           curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_COMPILER}
+          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_DEVICE_LIBS}
           curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_CORE_LIBS}
           curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_BLAS}
           sudo mkdir -p /opt/rocm
           sudo tar -xzf ${SDK_COMPILER} -C /opt/rocm
+          sudo tar -xzf ${SDK_DEVICE_LIBS} -C /opt/rocm
           sudo tar -xzf ${SDK_CORE_LIBS} -C /opt/rocm
           sudo tar -xzf ${SDK_BLAS} -C /opt/rocm
           \`\`\`
@@ -357,6 +382,7 @@ jobs:
           \`\`\`bash
           sha256sum -c ${RUNTIME_BUNDLE}.sha256
           sha256sum -c ${SDK_COMPILER}.sha256
+          sha256sum -c ${SDK_DEVICE_LIBS}.sha256
           sha256sum -c ${SDK_CORE_LIBS}.sha256
           sha256sum -c ${SDK_BLAS}.sha256
           sha256sum -c ${SDK_MATH}.sha256
@@ -386,6 +412,8 @@ jobs:
             ${{ needs.build.outputs.runtime_bundle }}.sha256
             ${{ needs.build.outputs.sdk_compiler }}
             ${{ needs.build.outputs.sdk_compiler }}.sha256
+            ${{ needs.build.outputs.sdk_device_libs }}
+            ${{ needs.build.outputs.sdk_device_libs }}.sha256
             ${{ needs.build.outputs.sdk_core_libs }}
             ${{ needs.build.outputs.sdk_core_libs }}.sha256
             ${{ needs.build.outputs.sdk_blas }}
