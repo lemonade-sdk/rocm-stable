@@ -314,6 +314,8 @@ mkdir -p "${STAGING_TOOLCHAIN}" "${STAGING_BLAS}" "${STAGING_MATH}"
 
 echo "  Partitioning: sdk-blas (BLAS libraries + Tensile kernels)..."
 
+mkdir -p "${STAGING_BLAS}/lib"
+
 for dir in "${SDK_BLAS_DIRS[@]}"; do
     if [ -d "${SDK_STAGING}/${dir}" ]; then
         mkdir -p "$(dirname "${STAGING_BLAS}/${dir}")"
@@ -333,6 +335,8 @@ for lib in "${SDK_BLAS_LIBS[@]}"; do
 done
 
 echo "  Partitioning: sdk-math (sparse/solver/random libraries)..."
+
+mkdir -p "${STAGING_MATH}/lib"
 
 for dir in "${SDK_MATH_DIRS[@]}"; do
     if [ -d "${SDK_STAGING}/${dir}" ]; then
