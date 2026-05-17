@@ -8,7 +8,7 @@
 # Both tarballs are extracted from the official AMD ROCm .deb packages
 # (no apt / repo.radeon.com needed at consume time).
 
-set -e
+set -eo pipefail
 
 ROCM_VERSION="7.2.2"
 ROCM_DEB_SUFFIX="70202-86"  # apt build suffix that pairs with this version
@@ -286,6 +286,7 @@ SDK_BLAS_LIBS=(
     "librocblas.so*"
     "libhipblas.so*"
     "libhipblas-common.so*"
+    "libhipblaslt.so*"
 )
 
 # sdk-math: sparse/solver/random math libraries
@@ -415,7 +416,7 @@ tar -czf "${SDK_MATH}" -C "${STAGING_MATH}" .
 SDK_MATH_SIZE=$(du -h "${SDK_MATH}" | cut -f1)
 echo "    sdk-math:      ${SDK_MATH} (${SDK_MATH_SIZE})"
 
-rm -rf "${STAGING_TOOLCHAIN}" "${STAGING_BLAS}" "${STAGING_MATH}"
+rm -rf "${STAGING_TOOLCHAIN}" "${STAGING_BLAS}" "${STAGING_MATH}" "${SDK_TEMP}" "${SDK_DIST}" "${SDK_STAGING}"
 
 echo ""
 echo "Done! Built four bundles:"
