@@ -258,11 +258,17 @@ jobs:
         with:
           name: rocm-bundles
 
-      - name: Extract version from tag
+      - name: Determine release version
         id: version
         run: |
-          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          echo "Building release for version: ${GITHUB_REF#refs/tags/}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            ROCM="${{ needs.build.outputs.rocm_version }}"
+            VERSION="v${ROCM}"
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Release version: ${VERSION}"
 
       - name: Create release notes
         id: release_notes
@@ -372,6 +378,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
           name: ROCm ${{ needs.build.outputs.rocm_version }} Bundles ${{ steps.version.outputs.VERSION }}
           body_path: release_notes.md
           files: |
