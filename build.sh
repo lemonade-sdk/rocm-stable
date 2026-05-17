@@ -494,6 +494,10 @@ if [ -d "${SDK_STAGING}/amdgcn" ]; then
     mkdir -p "${STAGING_DEVICE_LIBS}/amdgcn"
     cp -a "${SDK_STAGING}/amdgcn" "${STAGING_DEVICE_LIBS}/"
     echo "    + amdgcn/"
+elif [ -f "${SDK_STAGING}/amdgcn" ]; then
+    mkdir -p "${STAGING_DEVICE_LIBS}/amdgcn"
+    cp -a "${SDK_STAGING}/amdgcn" "${STAGING_DEVICE_LIBS}/amdgcn/"
+    echo "    + amdgcn (file)"
 fi
 
 # ---- sdk-compiler: explicit whitelist of compiler/toolchain content ----
