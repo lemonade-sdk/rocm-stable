@@ -490,6 +490,7 @@ elif [ -d "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" ]; then
 fi
 # Top-level amdgcn/ directory (AMDGPU backend data)
 if [ -d "${SDK_STAGING}/amdgcn" ]; then
+    rm -rf "${STAGING_DEVICE_LIBS}/amdgcn"
     mkdir -p "${STAGING_DEVICE_LIBS}/amdgcn"
     cp -a "${SDK_STAGING}/amdgcn" "${STAGING_DEVICE_LIBS}/"
     echo "    + amdgcn/"
