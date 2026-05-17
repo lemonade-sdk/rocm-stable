@@ -270,15 +270,77 @@ echo "${ROCM_VERSION}" > "${SDK_STAGING}/.info/version"
 echo "Step 4: Filtering tensile libraries for GPU_TARGETS..."
 filter_gpu_libs "${SDK_STAGING}"
 
-echo "Step 5: Creating the SDK tarball..."
-SDK_TARBALL="rocm-${ROCM_VERSION}-sdk.tar.gz"
-tar -czf "${SDK_TARBALL}" -C "${SDK_STAGING}" .
-SDK_SIZE=$(du -h "${SDK_TARBALL}" | cut -f1)
-echo "  SDK bundle: ${SDK_TARBALL} (${SDK_SIZE})"
+echo "Step 5: Splitting SDK into two parts..."
+
+# sdk-part1: compiler toolchain, headers, cmake, core runtime libs (~1.5 GB)
+# sdk-part2: math libraries with Tensile kernels (~1.8 GB)
+# Both parts must be extracted to /opt/rocm to produce the full SDK.
+SDK_PART1="rocm-${ROCM_VERSION}-sdk-part1.tar.gz"
+SDK_PART2="rocm-${ROCM_VERSION}-sdk-part2.tar.gz"
+
+# Directories that go into part2 only (heavy Tensile kernel data).
+SDK_PART2_DIRS=(
+    "lib/rocblas"
+    "lib/hipblaslt"
+    "lib/rocsparse"
+    "lib/rocsolver"
+    "lib/composablekernel"
+    "lib/rocwmma"
+)
+
+# .so files specific to part2 (math libraries not in the runtime bundle).
+SDK_PART2_LIBS=(
+    "librocblas.so*"
+    "libhipblas.so*"
+    "libhipblas-common.so*"
+    "libhipsparse.so*"
+    "libhipsolver.so*"
+    "libhiprand.so*"
+)
+
+# Create part1: everything EXCEPT the math-specific dirs and libs.
+TAR_EXCLUDES=""
+for dir in "${SDK_PART2_DIRS[@]}"; do
+    TAR_EXCLUDES="${TAR_EXCLUDES} --exclude=${dir}"
+done
+for lib in "${SDK_PART2_LIBS[@]}"; do
+    TAR_EXCLUDES="${TAR_EXCLUDES} --exclude=${lib}"
+done
+
+echo "  Creating ${SDK_PART1}..."
+# shellcheck disable=SC2086
+tar -czf "${SDK_PART1}" ${TAR_EXCLUDES} -C "${SDK_STAGING}" .
+SDK_PART1_SIZE=$(du -h "${SDK_PART1}" | cut -f1)
+echo "    SDK part 1: ${SDK_PART1} (${SDK_PART1_SIZE})"
+
+# Create part2: only the math-specific dirs and libs.
+echo "  Creating ${SDK_PART2}..."
+TAR_PART2_INCLUDES=()
+for dir in "${SDK_PART2_DIRS[@]}"; do
+    if [ -d "${SDK_STAGING}/${dir}" ]; then
+        TAR_PART2_INCLUDES+=("${dir}")
+    fi
+done
+for lib in "${SDK_PART2_LIBS[@]}"; do
+    matching=$(find "${SDK_STAGING}" -maxdepth 1 -name "${lib}" 2>/dev/null)
+    if [ -n "${matching}" ]; then
+        TAR_PART2_INCLUDES+=("${lib}")
+    fi
+done
+
+if [ ${#TAR_PART2_INCLUDES[@]} -gt 0 ]; then
+    tar -czf "${SDK_PART2}" -C "${SDK_STAGING}" "${TAR_PART2_INCLUDES[@]}"
+    SDK_PART2_SIZE=$(du -h "${SDK_PART2}" | cut -f1)
+    echo "    SDK part 2: ${SDK_PART2} (${SDK_PART2_SIZE})"
+else
+    echo "    WARNING: No math library files found — sdk-part2 is empty."
+    SDK_PART2_SIZE="0"
+fi
 
 rm -rf "${SDK_TEMP}" "${SDK_DIST}" "${SDK_STAGING}"
 
 echo ""
-echo "Done! Built two bundles:"
+echo "Done! Built three bundles:"
 echo "  - ${RUNTIME_TARBALL} (${RUNTIME_SIZE})"
-echo "  - ${SDK_TARBALL} (${SDK_SIZE})"
+echo "  - ${SDK_PART1} (${SDK_PART1_SIZE})"
+echo "  - ${SDK_PART2} (${SDK_PART2_SIZE})"
