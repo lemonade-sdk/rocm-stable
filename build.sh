@@ -538,6 +538,14 @@ echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
     if [[ "${rel}" == lib/* ]]; then
         skip=true
     fi
+    # Skip top-level llvm/ directory (duplicate of lib/llvm/, captured elsewhere)
+    if [[ "${rel}" == llvm/* ]]; then
+        skip=true
+    fi
+    # Skip top-level amdgcn/ directory (duplicate of lib/llvm/lib/amdgcn-amd-amdhsa)
+    if [[ "${rel}" == amdgcn/* ]]; then
+        skip=true
+    fi
     [ "${skip}" = true ] && continue
 
     dest="${STAGING_COMPILER}/${rel}"
