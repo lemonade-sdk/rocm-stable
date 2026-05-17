@@ -421,24 +421,32 @@ echo "  Partitioning: sdk-device-libs (device library bitcode)..."
 
 mkdir -p "${STAGING_DEVICE_LIBS}/lib"
 
-(cd "${SDK_STAGING}/lib" && find . -maxdepth 1 -type f ! -name '*.so' ! -name '*.so.*') | while IFS= read -r entry; do
+(cd "${SDK_STAGING}" && find lib -type f ! -name '*.so' ! -name '*.so.*') | while IFS= read -r entry; do
+    rel="${entry#lib/}"
     fname=$(basename "${entry}")
     skip=false
 
-    # Skip if matches BLAS pattern
-    for lib in "${SDK_BLAS_LIBS[@]}"; do
-        eval "case \"\${fname}\" in ${lib}) skip=true; break ;; esac"
+    # Skip if in BLAS or MATH subdirectories
+    for dir in "${SDK_BLAS_DIRS[@]}"; do
+        dir_base="${dir#lib/}"
+        if [[ "${rel}" == "${dir_base}"/* ]] || [[ "${rel}" == "${dir_base}" ]]; then
+            skip=true; break
+        fi
     done
     [ "${skip}" = true ] && continue
 
-    # Skip if matches MATH pattern
-    for lib in "${SDK_MATH_LIBS[@]}"; do
-        eval "case \"\${fname}\" in ${lib}) skip=true; break ;; esac"
+    for dir in "${SDK_MATH_DIRS[@]}"; do
+        dir_base="${dir#lib/}"
+        if [[ "${rel}" == "${dir_base}"/* ]] || [[ "${rel}" == "${dir_base}" ]]; then
+            skip=true; break
+        fi
     done
     [ "${skip}" = true ] && continue
 
-    cp -a "${SDK_STAGING}/lib/${fname}" "${STAGING_DEVICE_LIBS}/lib/"
-    echo "    + lib/${fname}"
+    dest_dir="${STAGING_DEVICE_LIBS}/lib/$(dirname "${rel}")"
+    mkdir -p "${dest_dir}"
+    cp -a "${SDK_STAGING}/${entry}" "${dest_dir}/"
+    echo "    + lib/${rel}"
 done
 
 # ---- sdk-compiler: everything else (bin, include, cmake, share, etc.) ----
@@ -465,7 +473,7 @@ echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
     [ "${skip}" = true ] && continue
 
     # Skip lib/ files (they go to core-libs, blas, math, or device-libs)
-    if [[ "$(dirname "${rel}")" == "lib" ]]; then
+    if [[ "${rel}" == lib/* ]]; then
         skip=true
     fi
     [ "${skip}" = true ] && continue
