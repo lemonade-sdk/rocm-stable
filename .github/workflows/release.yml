@@ -63,6 +63,7 @@ jobs:
           echo "rocm_version=${rocm_version}" >> $GITHUB_OUTPUT
           echo "runtime_bundle=${runtime_bundle}" >> $GITHUB_OUTPUT
           echo "sdk_compiler=${sdk_compiler}" >> $GITHUB_OUTPUT
+          echo "sdk_device_libs=${sdk_device_libs}" >> $GITHUB_OUTPUT
           echo "sdk_core_libs=${sdk_core_libs}" >> $GITHUB_OUTPUT
           echo "sdk_blas=${sdk_blas}" >> $GITHUB_OUTPUT
           echo "sdk_math=${sdk_math}" >> $GITHUB_OUTPUT
