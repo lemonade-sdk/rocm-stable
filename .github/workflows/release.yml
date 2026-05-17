@@ -24,8 +24,9 @@ jobs:
     outputs:
       rocm_version: ${{ steps.ver.outputs.rocm_version }}
       runtime_bundle: ${{ steps.ver.outputs.runtime_bundle }}
-      sdk_part1: ${{ steps.ver.outputs.sdk_part1 }}
-      sdk_part2: ${{ steps.ver.outputs.sdk_part2 }}
+      sdk_toolchain: ${{ steps.ver.outputs.sdk_toolchain }}
+      sdk_blas: ${{ steps.ver.outputs.sdk_blas }}
+      sdk_math: ${{ steps.ver.outputs.sdk_math }}
 
     steps:
       - name: Checkout repository
@@ -52,16 +53,19 @@ jobs:
         run: |
           rocm_version=$(grep '^ROCM_VERSION=' build.sh | cut -d'"' -f2)
           runtime_bundle="rocm-${rocm_version}-runtime-libs.tar.gz"
-          sdk_part1="rocm-${rocm_version}-sdk-part1.tar.gz"
-          sdk_part2="rocm-${rocm_version}-sdk-part2.tar.gz"
+          sdk_toolchain="rocm-${rocm_version}-sdk-toolchain.tar.gz"
+          sdk_blas="rocm-${rocm_version}-sdk-blas.tar.gz"
+          sdk_math="rocm-${rocm_version}-sdk-math.tar.gz"
           echo "rocm_version=${rocm_version}" >> $GITHUB_OUTPUT
           echo "runtime_bundle=${runtime_bundle}" >> $GITHUB_OUTPUT
-          echo "sdk_part1=${sdk_part1}" >> $GITHUB_OUTPUT
-          echo "sdk_part2=${sdk_part2}" >> $GITHUB_OUTPUT
+          echo "sdk_toolchain=${sdk_toolchain}" >> $GITHUB_OUTPUT
+          echo "sdk_blas=${sdk_blas}" >> $GITHUB_OUTPUT
+          echo "sdk_math=${sdk_math}" >> $GITHUB_OUTPUT
           echo "ROCm version: ${rocm_version}"
           echo "Runtime bundle:  ${runtime_bundle}"
-          echo "SDK part 1:      ${sdk_part1}"
-          echo "SDK part 2:      ${sdk_part2}"
+          echo "SDK toolchain:   ${sdk_toolchain}"
+          echo "SDK blas:        ${sdk_blas}"
+          echo "SDK math:        ${sdk_math}"
 
       - name: Build ROCm runtime + SDK bundles
         run: |
@@ -71,9 +75,10 @@ jobs:
       - name: Verify packages were created
         run: |
           runtime="${{ steps.ver.outputs.runtime_bundle }}"
-          sdk1="${{ steps.ver.outputs.sdk_part1 }}"
-          sdk2="${{ steps.ver.outputs.sdk_part2 }}"
-          for bundle in "${runtime}" "${sdk1}" "${sdk2}"; do
+          sdk_toolchain="${{ steps.ver.outputs.sdk_toolchain }}"
+          sdk_blas="${{ steps.ver.outputs.sdk_blas }}"
+          sdk_math="${{ steps.ver.outputs.sdk_math }}"
+          for bundle in "${runtime}" "${sdk_toolchain}" "${sdk_blas}" "${sdk_math}"; do
             if [ ! -f "${bundle}" ]; then
               echo "Error: ${bundle} not found!"
               exit 1
@@ -85,12 +90,14 @@ jobs:
       - name: Generate checksums
         run: |
           runtime="${{ steps.ver.outputs.runtime_bundle }}"
-          sdk1="${{ steps.ver.outputs.sdk_part1 }}"
-          sdk2="${{ steps.ver.outputs.sdk_part2 }}"
+          sdk_toolchain="${{ steps.ver.outputs.sdk_toolchain }}"
+          sdk_blas="${{ steps.ver.outputs.sdk_blas }}"
+          sdk_math="${{ steps.ver.outputs.sdk_math }}"
           sha256sum "${runtime}" > "${runtime}.sha256"
-          sha256sum "${sdk1}"    > "${sdk1}.sha256"
-          sha256sum "${sdk2}"    > "${sdk2}.sha256"
-          cat "${runtime}.sha256" "${sdk1}.sha256" "${sdk2}.sha256"
+          sha256sum "${sdk_toolchain}" > "${sdk_toolchain}.sha256"
+          sha256sum "${sdk_blas}"    > "${sdk_blas}.sha256"
+          sha256sum "${sdk_math}"    > "${sdk_math}.sha256"
+          cat "${runtime}.sha256" "${sdk_toolchain}.sha256" "${sdk_blas}.sha256" "${sdk_math}.sha256"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -99,10 +106,12 @@ jobs:
           path: |
             ${{ steps.ver.outputs.runtime_bundle }}
             ${{ steps.ver.outputs.runtime_bundle }}.sha256
-            ${{ steps.ver.outputs.sdk_part1 }}
-            ${{ steps.ver.outputs.sdk_part1 }}.sha256
-            ${{ steps.ver.outputs.sdk_part2 }}
-            ${{ steps.ver.outputs.sdk_part2 }}.sha256
+            ${{ steps.ver.outputs.sdk_toolchain }}
+            ${{ steps.ver.outputs.sdk_toolchain }}.sha256
+            ${{ steps.ver.outputs.sdk_blas }}
+            ${{ steps.ver.outputs.sdk_blas }}.sha256
+            ${{ steps.ver.outputs.sdk_math }}
+            ${{ steps.ver.outputs.sdk_math }}.sha256
           retention-days: 5
 
   verify:
@@ -119,26 +128,89 @@ jobs:
       - name: Report bundle sizes
         run: |
           runtime="${{ needs.build.outputs.runtime_bundle }}"
-          sdk1="${{ needs.build.outputs.sdk_part1 }}"
-          sdk2="${{ needs.build.outputs.sdk_part2 }}"
+          sdk_toolchain="${{ needs.build.outputs.sdk_toolchain }}"
+          sdk_blas="${{ needs.build.outputs.sdk_blas }}"
+          sdk_math="${{ needs.build.outputs.sdk_math }}"
 
           runtime_bytes=$(stat -c%s "${runtime}")
-          sdk1_bytes=$(stat -c%s "${sdk1}")
-          sdk2_bytes=$(stat -c%s "${sdk2}")
+          toolchain_bytes=$(stat -c%s "${sdk_toolchain}")
+          blas_bytes=$(stat -c%s "${sdk_blas}")
+          math_bytes=$(stat -c%s "${sdk_math}")
 
-          echo "Runtime:  $(numfmt --to=iec "${runtime_bytes}") (${runtime_bytes} bytes)"
-          echo "SDK p1:   $(numfmt --to=iec "${sdk1_bytes}") (${sdk1_bytes} bytes)"
-          echo "SDK p2:   $(numfmt --to=iec "${sdk2_bytes}") (${sdk2_bytes} bytes)"
-          echo "SDK total: $(numfmt --to=iec $((sdk1_bytes + sdk2_bytes)))"
+          echo "Runtime:    $(numfmt --to=iec "${runtime_bytes}") (${runtime_bytes} bytes)"
+          echo "Toolchain:  $(numfmt --to=iec "${toolchain_bytes}") (${toolchain_bytes} bytes)"
+          echo "BLAS:       $(numfmt --to=iec "${blas_bytes}") (${blas_bytes} bytes)"
+          echo "Math:       $(numfmt --to=iec "${math_bytes}") (${math_bytes} bytes)"
+          echo "SDK total:  $(numfmt --to=iec $((toolchain_bytes + blas_bytes + math_bytes)))"
+
+          # Size gate: 2 GiB per-asset limit
+          limit=$((2 * 1024 * 1024 * 1024))
+          for name in "Runtime:${runtime}:${runtime_bytes}" "Toolchain:${sdk_toolchain}:${toolchain_bytes}" "BLAS:${sdk_blas}:${blas_bytes}" "Math:${sdk_math}:${math_bytes}"; do
+            IFS=: read -r label path bytes <<< "${name}"
+            if [ "${bytes}" -gt "${limit}" ]; then
+              echo "::error::${label} exceeds 2 GiB limit: $(numfmt --to=iec "${bytes}")"
+              exit 1
+            fi
+            echo "  ${label}: $(numfmt --to=iec "${bytes}") -- within 2 GiB limit"
+          done
 
       - name: Verify checksums
         run: |
           runtime="${{ needs.build.outputs.runtime_bundle }}"
-          sdk1="${{ needs.build.outputs.sdk_part1 }}"
-          sdk2="${{ needs.build.outputs.sdk_part2 }}"
+          sdk_toolchain="${{ needs.build.outputs.sdk_toolchain }}"
+          sdk_blas="${{ needs.build.outputs.sdk_blas }}"
+          sdk_math="${{ needs.build.outputs.sdk_math }}"
           sha256sum -c "${runtime}.sha256"
-          sha256sum -c "${sdk1}.sha256"
-          sha256sum -c "${sdk2}.sha256"
+          sha256sum -c "${sdk_toolchain}.sha256"
+          sha256sum -c "${sdk_blas}.sha256"
+          sha256sum -c "${sdk_math}.sha256"
+
+      - name: Check no duplicate files across SDK artifacts
+        run: |
+          sdk_toolchain="${{ needs.build.outputs.sdk_toolchain }}"
+          sdk_blas="${{ needs.build.outputs.sdk_blas }}"
+          sdk_math="${{ needs.build.outputs.sdk_math }}"
+
+          tmp_tc=$(mktemp -d)
+          tmp_bl=$(mktemp -d)
+          tmp_ma=$(mktemp -d)
+
+          tar -xzf "${sdk_toolchain}" -C "${tmp_tc}"
+          tar -xzf "${sdk_blas}"    -C "${tmp_bl}"
+          tar -xzf "${sdk_math}"    -C "${tmp_ma}"
+
+          # Collect relative paths from each artifact
+          (cd "${tmp_tc}" && find . -type f | sort) > /tmp/files_tc.txt
+          (cd "${tmp_bl}" && find . -type f | sort) > /tmp/files_bl.txt
+          (cd "${tmp_ma}" && find . -type f | sort) > /tmp/files_ma.txt
+
+          dup_tc_bl=$(comm -12 /tmp/files_tc.txt /tmp/files_bl.txt)
+          dup_tc_ma=$(comm -12 /tmp/files_tc.txt /tmp/files_ma.txt)
+          dup_bl_ma=$(comm -12 /tmp/files_bl.txt /tmp/files_ma.txt)
+
+          has_dup=false
+          if [ -n "${dup_tc_bl}" ]; then
+            echo "::error::Duplicate files between toolchain and blas:"
+            echo "${dup_tc_bl}"
+            has_dup=true
+          fi
+          if [ -n "${dup_tc_ma}" ]; then
+            echo "::error::Duplicate files between toolchain and math:"
+            echo "${dup_tc_ma}"
+            has_dup=true
+          fi
+          if [ -n "${dup_bl_ma}" ]; then
+            echo "::error::Duplicate files between blas and math:"
+            echo "${dup_bl_ma}"
+            has_dup=true
+          fi
+
+          rm -rf "${tmp_tc}" "${tmp_bl}" "${tmp_ma}"
+
+          if [ "${has_dup}" = true ]; then
+            exit 1
+          fi
+          echo "No duplicate files across SDK artifacts -- check passed."
 
       - name: ldd check -- runtime bundle
         run: |
@@ -192,28 +264,32 @@ jobs:
         env:
           ROCM_VERSION: ${{ needs.build.outputs.rocm_version }}
           RUNTIME_BUNDLE: ${{ needs.build.outputs.runtime_bundle }}
-          SDK_PART1: ${{ needs.build.outputs.sdk_part1 }}
-          SDK_PART2: ${{ needs.build.outputs.sdk_part2 }}
+          SDK_TOOLCHAIN: ${{ needs.build.outputs.sdk_toolchain }}
+          SDK_BLAS: ${{ needs.build.outputs.sdk_blas }}
+          SDK_MATH: ${{ needs.build.outputs.sdk_math }}
         run: |
           cat > release_notes.md << EOF
           # ROCm ${ROCM_VERSION} Bundles
 
-          Three standalone ROCm ${ROCM_VERSION} bundles pulled from
+          Four standalone ROCm ${ROCM_VERSION} bundles pulled from
           https://repo.radeon.com/rocm/apt/${ROCM_VERSION}/ and laid out as
           drop-in replacements for \`/opt/rocm\`.
 
           | Bundle | File | Purpose |
           |--------|------|---------|
           | Runtime | \`${RUNTIME_BUNDLE}\` | Run HIP applications |
-          | SDK part 1 | \`${SDK_PART1}\` | Compiler toolchain, headers, cmake |
-          | SDK part 2 | \`${SDK_PART2}\` | Math libraries + Tensile kernels |
+          | SDK Toolchain | \`${SDK_TOOLCHAIN}\` | Compiler toolchain, headers, cmake |
+          | SDK BLAS | \`${SDK_BLAS}\` | rocBLAS, hipBLAS, hipBLASLt + Tensile kernels |
+          | SDK Math | \`${SDK_MATH}\` | rocSPARSE, rocSOLVER, random libs, etc. |
 
           - **\`${RUNTIME_BUNDLE}\`** — runtime libraries only. Use this to
             *run* HIP-enabled applications (e.g. llama.cpp ROCm builds).
-          - **\`${SDK_PART1}\`** — compiler toolchain, headers, cmake.
+          - **\`${SDK_TOOLCHAIN}\`** — compiler toolchain, headers, cmake.
             Use this to *build* HIP code against ROCm.
-          - **\`${SDK_PART2}\`** — math libraries with Tensile kernels.
-            Use this alongside part 1 for a complete SDK.
+          - **\`${SDK_BLAS}\`** — BLAS libraries with Tensile kernels.
+            Add this to toolchain for BLAS-enabled builds.
+          - **\`${SDK_MATH}\`** — sparse, solver, random libraries.
+            Add this alongside BLAS for the complete math SDK.
 
           Extract all needed bundles to the same directory to get the full tree.
 
@@ -236,11 +312,13 @@ jobs:
           Full SDK (compile against ROCm):
 
           \`\`\`bash
-          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_PART1}
-          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_PART2}
+          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_TOOLCHAIN}
+          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_BLAS}
+          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_MATH}
           sudo mkdir -p /opt/rocm
-          sudo tar -xzf ${SDK_PART1} -C /opt/rocm
-          sudo tar -xzf ${SDK_PART2} -C /opt/rocm
+          sudo tar -xzf ${SDK_TOOLCHAIN} -C /opt/rocm
+          sudo tar -xzf ${SDK_BLAS} -C /opt/rocm
+          sudo tar -xzf ${SDK_MATH} -C /opt/rocm
           /opt/rocm/bin/amdclang --version
           \`\`\`
 
@@ -248,8 +326,9 @@ jobs:
 
           \`\`\`bash
           sha256sum -c ${RUNTIME_BUNDLE}.sha256
-          sha256sum -c ${SDK_PART1}.sha256
-          sha256sum -c ${SDK_PART2}.sha256
+          sha256sum -c ${SDK_TOOLCHAIN}.sha256
+          sha256sum -c ${SDK_BLAS}.sha256
+          sha256sum -c ${SDK_MATH}.sha256
           \`\`\`
 
           ## License
@@ -273,10 +352,12 @@ jobs:
           files: |
             ${{ needs.build.outputs.runtime_bundle }}
             ${{ needs.build.outputs.runtime_bundle }}.sha256
-            ${{ needs.build.outputs.sdk_part1 }}
-            ${{ needs.build.outputs.sdk_part1 }}.sha256
-            ${{ needs.build.outputs.sdk_part2 }}
-            ${{ needs.build.outputs.sdk_part2 }}.sha256
+            ${{ needs.build.outputs.sdk_toolchain }}
+            ${{ needs.build.outputs.sdk_toolchain }}.sha256
+            ${{ needs.build.outputs.sdk_blas }}
+            ${{ needs.build.outputs.sdk_blas }}.sha256
+            ${{ needs.build.outputs.sdk_math }}
+            ${{ needs.build.outputs.sdk_math }}.sha256
           draft: false
           prerelease: false
         env:
