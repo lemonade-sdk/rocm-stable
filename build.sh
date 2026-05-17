@@ -515,8 +515,12 @@ fi
 echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
 
 # DIAG: trace the compiler find loop to debug skip logic
-echo "  [DIAG-COMPILER] Starting find loop, entries processed:"
-(cd "${SDK_STAGING}" && find . -mindepth 1) | while IFS= read -r entry; do
+echo "  [DIAG-COMPILER] BASH_VERSION=${BASH_VERSION:-not bash}"
+echo "  [DIAG-COMPILER] STAGING_COMPILER=${STAGING_COMPILER}"
+echo "  [DIAG-COMPILER] Starting find loop from ${SDK_STAGING}:"
+copied_count=0
+skipped_count=0
+(cd "${SDK_STAGING}" && find . -mindepth 1 | sort) | while IFS= read -r entry; do
     rel="${entry#./}"
     skip=false
     skip_reason=""
@@ -549,14 +553,16 @@ echo "  [DIAG-COMPILER] Starting find loop, entries processed:"
     if [[ "${rel}" == amdgcn/* ]]; then
         skip=true; skip_reason="amdgcn/*"
     fi
-    [ "${skip}" = true ] && { echo "    SKIP [${skip_reason}]: ${rel}"; continue; }
+    [ "${skip}" = true ] && { skipped_count=$((skipped_count + 1)); [[ "${rel}" == */* ]] || echo "    SKIP [${skip_reason}]: ${rel}"; continue; }
 
-    echo "    COPY: ${rel}"
+    # Only echo for top-level entries (not deeply nested)
+    [[ "${rel}" != */* ]] && echo "    COPY: ${rel}"
+    copied_count=$((copied_count + 1))
     dest="${STAGING_COMPILER}/${rel}"
     mkdir -p "$(dirname "${dest}")"
     cp -a "${SDK_STAGING}/${rel}" "${dest}"
 done
-echo "  [DIAG-COMPILER] Find loop complete."
+echo "  [DIAG-COMPILER] Find loop complete. Copied: ${copied_count}, Skipped: ${skipped_count}"
 
 # LLVM toolchain files from lib/llvm/ (binaries, headers, clang resources)
 if [ -d "${SDK_STAGING}/lib/llvm" ]; then
