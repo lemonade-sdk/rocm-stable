@@ -23,7 +23,8 @@ jobs:
 
     outputs:
       rocm_version: ${{ steps.ver.outputs.rocm_version }}
-      bundle_name: ${{ steps.ver.outputs.bundle_name }}
+      runtime_bundle: ${{ steps.ver.outputs.runtime_bundle }}
+      sdk_bundle: ${{ steps.ver.outputs.sdk_bundle }}
 
     steps:
       - name: Checkout repository
@@ -49,40 +50,50 @@ jobs:
         id: ver
         run: |
           rocm_version=$(grep '^ROCM_VERSION=' build.sh | cut -d'"' -f2)
-          bundle_name="rocm-${rocm_version}-runtime-libs.tar.gz"
+          runtime_bundle="rocm-${rocm_version}-runtime-libs.tar.gz"
+          sdk_bundle="rocm-${rocm_version}-sdk.tar.gz"
           echo "rocm_version=${rocm_version}" >> $GITHUB_OUTPUT
-          echo "bundle_name=${bundle_name}" >> $GITHUB_OUTPUT
+          echo "runtime_bundle=${runtime_bundle}" >> $GITHUB_OUTPUT
+          echo "sdk_bundle=${sdk_bundle}" >> $GITHUB_OUTPUT
           echo "ROCm version: ${rocm_version}"
-          echo "Bundle name: ${bundle_name}"
+          echo "Runtime bundle: ${runtime_bundle}"
+          echo "SDK bundle:     ${sdk_bundle}"
 
-      - name: Build ROCm SDK bundle
+      - name: Build ROCm runtime + SDK bundles
         run: |
           chmod +x build.sh
           ./build.sh
 
-      - name: Verify package was created
+      - name: Verify packages were created
         run: |
-          bundle="${{ steps.ver.outputs.bundle_name }}"
-          if [ ! -f "${bundle}" ]; then
-            echo "Error: ${bundle} not found!"
-            exit 1
-          fi
-          echo "Package size: $(du -h ${bundle} | cut -f1)"
-          echo "Package created successfully"
+          runtime="${{ steps.ver.outputs.runtime_bundle }}"
+          sdk="${{ steps.ver.outputs.sdk_bundle }}"
+          for bundle in "${runtime}" "${sdk}"; do
+            if [ ! -f "${bundle}" ]; then
+              echo "Error: ${bundle} not found!"
+              exit 1
+            fi
+            echo "Package size: $(du -h ${bundle} | cut -f1) (${bundle})"
+          done
+          echo "Packages created successfully"
 
       - name: Generate checksums
         run: |
-          bundle="${{ steps.ver.outputs.bundle_name }}"
-          sha256sum "${bundle}" > "${bundle}.sha256"
-          cat "${bundle}.sha256"
+          runtime="${{ steps.ver.outputs.runtime_bundle }}"
+          sdk="${{ steps.ver.outputs.sdk_bundle }}"
+          sha256sum "${runtime}" > "${runtime}.sha256"
+          sha256sum "${sdk}"     > "${sdk}.sha256"
+          cat "${runtime}.sha256" "${sdk}.sha256"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rocm-runtime-bundle
+          name: rocm-bundles
           path: |
-            ${{ steps.ver.outputs.bundle_name }}
-            ${{ steps.ver.outputs.bundle_name }}.sha256
+            ${{ steps.ver.outputs.runtime_bundle }}
+            ${{ steps.ver.outputs.runtime_bundle }}.sha256
+            ${{ steps.ver.outputs.sdk_bundle }}
+            ${{ steps.ver.outputs.sdk_bundle }}.sha256
           retention-days: 5
 
   release:
@@ -98,7 +109,7 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: rocm-runtime-bundle
+          name: rocm-bundles
 
       - name: Extract version from tag
         id: version
@@ -110,42 +121,42 @@ jobs:
         id: release_notes
         env:
           ROCM_VERSION: ${{ needs.build.outputs.rocm_version }}
-          BUNDLE: ${{ needs.build.outputs.bundle_name }}
+          RUNTIME_BUNDLE: ${{ needs.build.outputs.runtime_bundle }}
+          SDK_BUNDLE: ${{ needs.build.outputs.sdk_bundle }}
         run: |
           cat > release_notes.md << EOF
-          # ROCm ${ROCM_VERSION} SDK Bundle
+          # ROCm ${ROCM_VERSION} Bundles
 
-          A standalone bundle of the ROCm ${ROCM_VERSION} SDK — compiler, headers,
-          cmake configs, and runtime libraries — pulled from
-          https://repo.radeon.com/rocm/apt/${ROCM_VERSION}/ and laid out as a
-          drop-in replacement for \`/opt/rocm\`. Use it to build and run
-          HIP-enabled applications without installing ROCm system-wide.
+          Two standalone ROCm ${ROCM_VERSION} bundles pulled from
+          https://repo.radeon.com/rocm/apt/${ROCM_VERSION}/ and laid out as
+          drop-in replacements for \`/opt/rocm\`.
 
-          ## What's included
+          - **\`${RUNTIME_BUNDLE}\`** — runtime libraries only. Use this to
+            *run* HIP-enabled applications (e.g. llama.cpp ROCm builds).
+          - **\`${SDK_BUNDLE}\`** — full SDK: compiler, headers, cmake configs,
+            and runtime libraries. Use this to *build* against ROCm.
 
-          ### Compiler toolchain
-          - \`amdclang\` / \`amdclang++\` (HIP-aware Clang driver)
-          - \`hipcc\` driver wrapper
-          - rocm-llvm, rocm-device-libs, rocm-cmake
+          ## What's in the runtime bundle
 
-          ### HIP runtime + headers
-          - libamdhip64 + \`include/hip/\`
-          - libhsa-runtime64 + \`include/hsa/\`
-          - hipconfig, rocminfo, rocm-smi
-
-          ### Math libraries (runtime + dev headers)
-          - rocBLAS, hipBLAS, hipBLASLt
-          - rocSPARSE, hipSPARSE
-          - rocSOLVER, hipSOLVER
+          - libamdhip64 (HIP runtime)
+          - libhsa-runtime64 (HSA runtime)
+          - libamd_comgr (online kernel compilation manager)
+          - rocBLAS, hipBLAS, hipBLASLt (math runtime)
+          - rocSPARSE, hipSPARSE, rocSOLVER, hipSOLVER
           - rocRAND, hipRAND
+          - openmp-extras-runtime
+          - rocprofiler-register, roctracer
+          - rocm-smi, rocminfo
+          - Filtered Tensile / hipBLASLt GPU kernels for supported gfx targets
 
-          ### Template libraries (header-only)
-          - rocPRIM, rocThrust, hipCUB, rocWMMA
+          ## What the SDK bundle adds on top
 
-          ### GPU kernel files (filtered to supported targets)
-          - rocBLAS Tensile kernels
-          - hipBLASLt kernels
-          - composable-kernel
+          - **Compiler toolchain**: \`amdclang\` / \`amdclang++\`, \`hipcc\`,
+            rocm-llvm, rocm-device-libs, rocm-cmake
+          - **Headers**: hip-dev, hsa-rocr-dev, and -dev packages for every
+            math/runtime library above
+          - **Template libraries (header-only)**: rocPRIM, rocThrust, hipCUB,
+            rocWMMA, composable-kernel
 
           ## System requirements
 
@@ -155,27 +166,28 @@ jobs:
 
           ## Quick start
 
+          Runtime only (smaller download, run pre-built ROCm apps):
+
           \`\`\`bash
-          # Download
-          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${BUNDLE}
-
-          # Extract to /opt/rocm
+          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${RUNTIME_BUNDLE}
           sudo mkdir -p /opt/rocm
-          sudo tar -xzf ${BUNDLE} -C /opt/rocm
+          sudo tar -xzf ${RUNTIME_BUNDLE} -C /opt/rocm
+          \`\`\`
 
-          # Verify the compiler
+          Full SDK (compile against ROCm):
+
+          \`\`\`bash
+          curl -fsSL -O https://github.com/lemonade-sdk/rocm-stable/releases/download/${{ steps.version.outputs.VERSION }}/${SDK_BUNDLE}
+          sudo mkdir -p /opt/rocm
+          sudo tar -xzf ${SDK_BUNDLE} -C /opt/rocm
           /opt/rocm/bin/amdclang --version
           \`\`\`
 
           ## Verification
 
-          **SHA256 Checksum:**
-          \`\`\`
-          \$(cat ${BUNDLE}.sha256)
-          \`\`\`
-
           \`\`\`bash
-          sha256sum -c ${BUNDLE}.sha256
+          sha256sum -c ${RUNTIME_BUNDLE}.sha256
+          sha256sum -c ${SDK_BUNDLE}.sha256
           \`\`\`
 
           ## License
@@ -184,7 +196,7 @@ jobs:
 
           ---
 
-          **Note:** This is an unofficial redistribution of the ROCm SDK for
+          **Note:** This is an unofficial redistribution of ROCm for
           convenience. For official ROCm releases, visit:
           https://github.com/RadeonOpenCompute/ROCm
           EOF
@@ -194,11 +206,13 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          name: ROCm ${{ needs.build.outputs.rocm_version }} SDK Bundle ${{ steps.version.outputs.VERSION }}
+          name: ROCm ${{ needs.build.outputs.rocm_version }} Bundles ${{ steps.version.outputs.VERSION }}
           body_path: release_notes.md
           files: |
-            ${{ needs.build.outputs.bundle_name }}
-            ${{ needs.build.outputs.bundle_name }}.sha256
+            ${{ needs.build.outputs.runtime_bundle }}
+            ${{ needs.build.outputs.runtime_bundle }}.sha256
+            ${{ needs.build.outputs.sdk_bundle }}
+            ${{ needs.build.outputs.sdk_bundle }}.sha256
           draft: false
           prerelease: false
         env:

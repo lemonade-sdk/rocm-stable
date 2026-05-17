@@ -1,10 +1,14 @@
 #!/bin/bash
-# Build script for the ROCm SDK bundle: compiler, headers, cmake configs,
-# and runtime libraries — everything needed to BUILD against ROCm without
-# touching apt or repo.radeon.com at consume time.
+# Build script for two ROCm artifacts:
+#   1. rocm-<ver>-runtime-libs.tar.gz — runtime library bundle, identical in
+#      shape and contents to the bundle produced on `main`: same 11 debs,
+#      only lib/* is shipped, cmake/ is stripped, GPU kernels filtered.
+#   2. rocm-<ver>-sdk.tar.gz — full SDK: compiler, headers, cmake configs,
+#      and runtime libraries, laid out as a drop-in replacement for
+#      /opt/rocm.
 #
-# Downloads .deb packages from the official AMD ROCm repository and extracts
-# them into a single self-contained tarball.
+# Both tarballs are extracted from the official AMD ROCm .deb packages
+# (no apt / repo.radeon.com needed at consume time).
 
 set -e
 
@@ -17,8 +21,25 @@ BASE_URL="https://repo.radeon.com/rocm/apt/${ROCM_VERSION}/pool/main"
 # Add new archs here when AMD enables WMMA on them in this ROCm release.
 GPU_TARGETS="gfx1030;gfx1031;gfx1032;gfx1100;gfx1101;gfx1102;gfx1103;gfx1151;gfx1150;gfx1200;gfx1201"
 
-# Full SDK package set (compiler + headers + runtime libs).
-PACKAGES=(
+# Runtime package set — mirrors `main` exactly. Do not add or remove entries
+# here without coordinating; the runtime tarball's contract is to match the
+# historical runtime bundle.
+PACKAGES_RUNTIME=(
+    "c/comgr${ROCM_VERSION}/comgr${ROCM_VERSION}_3.0.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+    "h/hip-runtime-amd${ROCM_VERSION}/hip-runtime-amd${ROCM_VERSION}_7.2.53211.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+    "h/hipblas${ROCM_VERSION}/hipblas${ROCM_VERSION}_3.2.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+    "h/hipblaslt${ROCM_VERSION}/hipblaslt${ROCM_VERSION}_1.2.2.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+    "h/hsa-rocr${ROCM_VERSION}/hsa-rocr${ROCM_VERSION}_1.18.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+    "h/hsa-rocr-dev${ROCM_VERSION}/hsa-rocr-dev${ROCM_VERSION}_1.18.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+    "r/rocblas${ROCM_VERSION}/rocblas${ROCM_VERSION}_5.2.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+    "r/rocsparse${ROCM_VERSION}/rocsparse${ROCM_VERSION}_4.2.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+    "r/rocsolver${ROCM_VERSION}/rocsolver${ROCM_VERSION}_3.32.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+    "r/rocprofiler-register${ROCM_VERSION}/rocprofiler-register${ROCM_VERSION}_0.6.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+    "r/roctracer${ROCM_VERSION}/roctracer${ROCM_VERSION}_4.1.70202.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
+)
+
+# Full SDK package set (compiler + headers + cmake + runtime + dev libs).
+PACKAGES_SDK=(
     # Foundational
     "r/rocm-core${ROCM_VERSION}/rocm-core${ROCM_VERSION}_7.2.2.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
     "c/comgr${ROCM_VERSION}/comgr${ROCM_VERSION}_3.0.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
@@ -76,7 +97,7 @@ PACKAGES=(
     # OpenMP extras (HIP offload runtime)
     "o/openmp-extras-runtime${ROCM_VERSION}/openmp-extras-runtime${ROCM_VERSION}_20.70.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
 
-    # Profiling helpers (small)
+    # Profiling helpers
     "r/rocprofiler-register${ROCM_VERSION}/rocprofiler-register${ROCM_VERSION}_0.6.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
     "r/roctracer${ROCM_VERSION}/roctracer${ROCM_VERSION}_4.1.70202.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
 
@@ -85,76 +106,34 @@ PACKAGES=(
     "r/rocminfo${ROCM_VERSION}/rocminfo${ROCM_VERSION}_1.0.0.${ROCM_DEB_SUFFIX}~24.04_amd64.deb"
 )
 
-TEMP_DIR="tmp_extract"
-DIST_DIR="rocm-runtime"
-STAGING_DIR="rocm-runtime-bundle"
+# Download + ar-extract each .deb in $1 (nameref to array) into $2 (dist dir).
+# $3 is a scratch temp dir.
+extract_packages() {
+    local -n pkgs=$1
+    local dist_dir=$2
+    local temp_dir=$3
+    for pkg_path in "${pkgs[@]}"; do
+        pkg_name=$(basename "${pkg_path}")
+        echo "  Processing ${pkg_name}..."
 
-echo "Building ROCm ${ROCM_VERSION} SDK bundle (Native)..."
+        wget -q "${BASE_URL}/${pkg_path}" -O "${temp_dir}/${pkg_name}"
 
-# Clean up previous builds
-rm -rf "${TEMP_DIR}" "${DIST_DIR}" "${STAGING_DIR}"
-mkdir -p "${TEMP_DIR}" "${DIST_DIR}"
+        (cd "${temp_dir}" && ar x "${pkg_name}")
 
-# Step 1: Download and extract packages
-echo "Step 1: Downloading and extracting packages..."
-for pkg_path in "${PACKAGES[@]}"; do
-    pkg_name=$(basename "${pkg_path}")
-    echo "  Processing ${pkg_name}..."
-
-    wget -q "${BASE_URL}/${pkg_path}" -O "${TEMP_DIR}/${pkg_name}"
-
-    # Extract .deb (ar x)
-    (cd "${TEMP_DIR}" && ar x "${pkg_name}")
-
-    # Extract data.tar.* (it could be .xz or .zst)
-    if [ -f "${TEMP_DIR}/data.tar.xz" ]; then
-        tar -xf "${TEMP_DIR}/data.tar.xz" -C "${DIST_DIR}"
-    elif [ -f "${TEMP_DIR}/data.tar.zst" ]; then
-        if command -v zstd >/dev/null 2>&1; then
-            tar --use-compress-program=zstd -xf "${TEMP_DIR}/data.tar.zst" -C "${DIST_DIR}"
-        else
-            echo "Error: zstd is required to extract some packages but not found."
-            exit 1
+        if [ -f "${temp_dir}/data.tar.xz" ]; then
+            tar -xf "${temp_dir}/data.tar.xz" -C "${dist_dir}"
+        elif [ -f "${temp_dir}/data.tar.zst" ]; then
+            if command -v zstd >/dev/null 2>&1; then
+                tar --use-compress-program=zstd -xf "${temp_dir}/data.tar.zst" -C "${dist_dir}"
+            else
+                echo "Error: zstd is required to extract some packages but not found."
+                exit 1
+            fi
         fi
-    fi
 
-    rm -f "${TEMP_DIR}/data.tar."* "${TEMP_DIR}/control.tar."* "${TEMP_DIR}/debian-binary" "${TEMP_DIR}/${pkg_name}"
-done
-
-# Step 2: Organize files (full /opt/rocm-X.Y.Z tree, not just lib/)
-echo "Step 2: Organizing the SDK tree..."
-mkdir -p "${STAGING_DIR}"
-
-ROCM_INSTALL_DIR=$(find "${DIST_DIR}/opt" -maxdepth 1 -name "rocm-*" -type d | head -n 1)
-
-if [ -z "${ROCM_INSTALL_DIR}" ]; then
-    echo "Error: Could not find ROCm installation directory in extracted files."
-    exit 1
-fi
-
-echo "  Found ROCm installation at ${ROCM_INSTALL_DIR}"
-
-# Copy the entire ROCm install tree (bin/, include/, lib/, lib/llvm/, share/, etc.)
-cp -a "${ROCM_INSTALL_DIR}/." "${STAGING_DIR}/"
-
-# Copy template files
-if [ -f "templates/setup-env.sh" ]; then
-    cp templates/setup-env.sh "${STAGING_DIR}/"
-    chmod +x "${STAGING_DIR}/setup-env.sh"
-fi
-
-if [ -f "templates/README-package.md" ]; then
-    cp templates/README-package.md "${STAGING_DIR}/README.md"
-fi
-
-# Step 3: Create version file
-echo "Step 3: Creating version information..."
-mkdir -p "${STAGING_DIR}/.info"
-echo "${ROCM_VERSION}" > "${STAGING_DIR}/.info/version"
-echo "  Created version file: ${STAGING_DIR}/.info/version"
-
-# Step 4: Filter tensile libraries for GPU_TARGETS
-echo "Step 4: Filtering tensile libraries for GPU_TARGETS..."
+        rm -f "${temp_dir}/data.tar."* "${temp_dir}/control.tar."* "${temp_dir}/debian-binary" "${temp_dir}/${pkg_name}"
+    done
+}
 
 should_keep_file() {
     local filename="$1"
@@ -181,22 +160,121 @@ should_keep_file() {
     return 0
 }
 
-while IFS= read -r libfile; do
-    basename=$(basename "${libfile}")
-    if ! should_keep_file "${basename}" "${GPU_TARGETS}"; then
-        echo "  Removing unsupported GPU library: ${basename}"
-        rm -f "${libfile}"
-    fi
-done < <(find "${STAGING_DIR}" -type f \( -name "*TensileLibrary*" -o -name "*Kernels.so*" -o -name "extop_*" \))
+filter_gpu_libs() {
+    local staging_dir="$1"
+    while IFS= read -r libfile; do
+        basename=$(basename "${libfile}")
+        if ! should_keep_file "${basename}" "${GPU_TARGETS}"; then
+            echo "  Removing unsupported GPU library: ${basename}"
+            rm -f "${libfile}"
+        fi
+    done < <(find "${staging_dir}" -type f \( -name "*TensileLibrary*" -o -name "*Kernels.so*" -o -name "extop_*" \))
+}
 
-# Step 5: Create the final tarball
-echo "Step 5: Creating the final tarball..."
-TARBALL="rocm-${ROCM_VERSION}-runtime-libs.tar.gz"
-tar -czf "${TARBALL}" -C "${STAGING_DIR}" .
+# ---- Runtime bundle: mirror main's layout exactly (lib/* only, no cmake) ----
 
-echo "Done! ROCm bundle created: ${TARBALL}"
-TARBALL_SIZE=$(du -h "${TARBALL}" | cut -f1)
-echo "Size: ${TARBALL_SIZE}"
+RUNTIME_TEMP="tmp_extract_runtime"
+RUNTIME_DIST="rocm-runtime"
+RUNTIME_STAGING="rocm-runtime-bundle"
 
-# Clean up
-rm -rf "${TEMP_DIR}" "${DIST_DIR}" "${STAGING_DIR}"
+echo "=== Building ROCm ${ROCM_VERSION} runtime bundle ==="
+rm -rf "${RUNTIME_TEMP}" "${RUNTIME_DIST}" "${RUNTIME_STAGING}"
+mkdir -p "${RUNTIME_TEMP}" "${RUNTIME_DIST}" "${RUNTIME_STAGING}"
+
+echo "Step 1: Downloading and extracting runtime packages..."
+extract_packages PACKAGES_RUNTIME "${RUNTIME_DIST}" "${RUNTIME_TEMP}"
+
+echo "Step 2: Organizing libraries..."
+RUNTIME_ROCM_DIR=$(find "${RUNTIME_DIST}/opt" -maxdepth 1 -name "rocm-*" -type d | head -n 1)
+if [ -z "${RUNTIME_ROCM_DIR}" ]; then
+    echo "Error: Could not find ROCm installation directory in extracted files."
+    exit 1
+fi
+echo "  Found ROCm installation at ${RUNTIME_ROCM_DIR}"
+
+if [ -d "${RUNTIME_ROCM_DIR}/lib" ]; then
+    cp -r "${RUNTIME_ROCM_DIR}/lib/"* "${RUNTIME_STAGING}/"
+else
+    echo "Error: lib directory not found in ROCm installation."
+    exit 1
+fi
+
+if [ -f "templates/setup-env.sh" ]; then
+    cp templates/setup-env.sh "${RUNTIME_STAGING}/"
+    chmod +x "${RUNTIME_STAGING}/setup-env.sh"
+fi
+if [ -f "templates/README-package.md" ]; then
+    cp templates/README-package.md "${RUNTIME_STAGING}/README.md"
+fi
+
+if [ -d "${RUNTIME_STAGING}/cmake" ]; then
+    echo "Step 3: Removing cmake files..."
+    rm -rf "${RUNTIME_STAGING}/cmake"
+fi
+
+echo "Step 3.5: Creating version information..."
+mkdir -p "${RUNTIME_STAGING}/.info"
+echo "${ROCM_VERSION}" > "${RUNTIME_STAGING}/.info/version"
+
+echo "Step 4: Filtering tensile libraries for GPU_TARGETS..."
+filter_gpu_libs "${RUNTIME_STAGING}"
+
+echo "Step 5: Creating the runtime tarball..."
+RUNTIME_TARBALL="rocm-${ROCM_VERSION}-runtime-libs.tar.gz"
+tar -czf "${RUNTIME_TARBALL}" -C "${RUNTIME_STAGING}" .
+RUNTIME_SIZE=$(du -h "${RUNTIME_TARBALL}" | cut -f1)
+echo "  Runtime bundle: ${RUNTIME_TARBALL} (${RUNTIME_SIZE})"
+
+rm -rf "${RUNTIME_TEMP}" "${RUNTIME_DIST}" "${RUNTIME_STAGING}"
+
+# ---- SDK bundle: full /opt/rocm tree (compiler + headers + cmake + runtime) ----
+
+SDK_TEMP="tmp_extract_sdk"
+SDK_DIST="rocm-sdk"
+SDK_STAGING="rocm-sdk-bundle"
+
+echo ""
+echo "=== Building ROCm ${ROCM_VERSION} SDK bundle ==="
+rm -rf "${SDK_TEMP}" "${SDK_DIST}" "${SDK_STAGING}"
+mkdir -p "${SDK_TEMP}" "${SDK_DIST}" "${SDK_STAGING}"
+
+echo "Step 1: Downloading and extracting SDK packages..."
+extract_packages PACKAGES_SDK "${SDK_DIST}" "${SDK_TEMP}"
+
+echo "Step 2: Organizing the SDK tree..."
+SDK_ROCM_DIR=$(find "${SDK_DIST}/opt" -maxdepth 1 -name "rocm-*" -type d | head -n 1)
+if [ -z "${SDK_ROCM_DIR}" ]; then
+    echo "Error: Could not find ROCm installation directory in extracted files."
+    exit 1
+fi
+echo "  Found ROCm installation at ${SDK_ROCM_DIR}"
+
+cp -a "${SDK_ROCM_DIR}/." "${SDK_STAGING}/"
+
+if [ -f "templates/setup-env.sh" ]; then
+    cp templates/setup-env.sh "${SDK_STAGING}/"
+    chmod +x "${SDK_STAGING}/setup-env.sh"
+fi
+if [ -f "templates/README-package.md" ]; then
+    cp templates/README-package.md "${SDK_STAGING}/README.md"
+fi
+
+echo "Step 3: Creating version information..."
+mkdir -p "${SDK_STAGING}/.info"
+echo "${ROCM_VERSION}" > "${SDK_STAGING}/.info/version"
+
+echo "Step 4: Filtering tensile libraries for GPU_TARGETS..."
+filter_gpu_libs "${SDK_STAGING}"
+
+echo "Step 5: Creating the SDK tarball..."
+SDK_TARBALL="rocm-${ROCM_VERSION}-sdk.tar.gz"
+tar -czf "${SDK_TARBALL}" -C "${SDK_STAGING}" .
+SDK_SIZE=$(du -h "${SDK_TARBALL}" | cut -f1)
+echo "  SDK bundle: ${SDK_TARBALL} (${SDK_SIZE})"
+
+rm -rf "${SDK_TEMP}" "${SDK_DIST}" "${SDK_STAGING}"
+
+echo ""
+echo "Done! Built two bundles:"
+echo "  - ${RUNTIME_TARBALL} (${RUNTIME_SIZE})"
+echo "  - ${SDK_TARBALL} (${SDK_SIZE})"
