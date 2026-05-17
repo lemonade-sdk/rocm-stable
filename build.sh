@@ -514,44 +514,49 @@ fi
 # ---- sdk-compiler: everything else (bin, include, cmake, share, etc.) ----
 echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
 
+# DIAG: trace the compiler find loop to debug skip logic
+echo "  [DIAG-COMPILER] Starting find loop, entries processed:"
 (cd "${SDK_STAGING}" && find . -mindepth 1) | while IFS= read -r entry; do
     rel="${entry#./}"
     skip=false
+    skip_reason=""
 
     # Skip BLAS directories
     for dir in "${SDK_BLAS_DIRS[@]}"; do
         if [ "${rel}" = "${dir}" ] || [[ "${rel}" == "${dir}/"* ]]; then
-            skip=true; break
+            skip=true; skip_reason="blas dir: ${dir}"; break
         fi
     done
-    [ "${skip}" = true ] && continue
+    [ "${skip}" = true ] && { echo "    SKIP [${skip_reason}]: ${rel}"; continue; }
 
     # Skip MATH directories
     for dir in "${SDK_MATH_DIRS[@]}"; do
         if [ "${rel}" = "${dir}" ] || [[ "${rel}" == "${dir}/"* ]]; then
-            skip=true; break
+            skip=true; skip_reason="math dir: ${dir}"; break
         fi
     done
-    [ "${skip}" = true ] && continue
+    [ "${skip}" = true ] && { echo "    SKIP [${skip_reason}]: ${rel}"; continue; }
 
     # Skip lib/ files (they go to core-libs, blas, math, or device-libs)
     if [[ "${rel}" == lib/* ]]; then
-        skip=true
+        skip=true; skip_reason="lib/*"
     fi
     # Skip top-level llvm/ directory (duplicate of lib/llvm/, captured elsewhere)
     if [[ "${rel}" == llvm/* ]]; then
-        skip=true
+        skip=true; skip_reason="llvm/*"
     fi
     # Skip top-level amdgcn/ directory (duplicate of lib/llvm/lib/amdgcn-amd-amdhsa)
     if [[ "${rel}" == amdgcn/* ]]; then
-        skip=true
+        skip=true; skip_reason="amdgcn/*"
     fi
-    [ "${skip}" = true ] && continue
+    [ "${skip}" = true ] && { echo "    SKIP [${skip_reason}]: ${rel}"; continue; }
 
+    echo "    COPY: ${rel}"
     dest="${STAGING_COMPILER}/${rel}"
     mkdir -p "$(dirname "${dest}")"
     cp -a "${SDK_STAGING}/${rel}" "${dest}"
 done
+echo "  [DIAG-COMPILER] Find loop complete."
 
 # LLVM toolchain files from lib/llvm/ (binaries, headers, clang resources)
 if [ -d "${SDK_STAGING}/lib/llvm" ]; then
