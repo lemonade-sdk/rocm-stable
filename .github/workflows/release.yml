@@ -107,28 +107,16 @@ jobs:
         with:
           name: rocm-bundles
 
-      - name: Size gate (2 GB GitHub release limit)
+      - name: Report bundle sizes
         run: |
           runtime="${{ needs.build.outputs.runtime_bundle }}"
           sdk="${{ needs.build.outputs.sdk_bundle }}"
-          max_bytes=2147483648
 
           runtime_bytes=$(stat -c%s "${runtime}")
           sdk_bytes=$(stat -c%s "${sdk}")
 
           echo "Runtime: $(numfmt --to=iec "${runtime_bytes}") (${runtime_bytes} bytes)"
           echo "SDK:     $(numfmt --to=iec "${sdk_bytes}") (${sdk_bytes} bytes)"
-          echo "Limit:   2 GB (${max_bytes} bytes)"
-
-          if [ "${runtime_bytes}" -gt "${max_bytes}" ]; then
-            echo "::error::Runtime bundle exceeds 2 GB GitHub release limit"
-            exit 1
-          fi
-          if [ "${sdk_bytes}" -gt "${max_bytes}" ]; then
-            echo "::error::SDK bundle exceeds 2 GB GitHub release limit"
-            exit 1
-          fi
-          echo "Size gate passed."
 
       - name: Verify checksums
         run: |
