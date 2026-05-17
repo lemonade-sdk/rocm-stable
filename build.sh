@@ -398,7 +398,7 @@ for dir in "${SDK_MATH_DIRS[@]}"; do BLAS_MATH_ENTRIES+=("${dir}"); done
         for lib in "${SDK_MATH_LIBS[@]}"; do
             eval "case \"\${fname}\" in ${lib}) skip=true; break ;; esac"
         done
-    done
+    fi
     [ "${skip}" = true ] && continue
 
     dest="${STAGING_TOOLCHAIN}/${rel}"
