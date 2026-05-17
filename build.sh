@@ -511,58 +511,30 @@ elif [ -d "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" ]; then
     echo "    + lib/llvm/lib/amdgcn-amd-amdhsa/"
 fi
 
-# ---- sdk-compiler: everything else (bin, include, cmake, share, etc.) ----
+# ---- sdk-compiler: explicit whitelist of compiler/toolchain content ----
 echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
 
-# DIAG: trace the compiler find loop to debug skip logic
-echo "  [DIAG-COMPILER] BASH_VERSION=${BASH_VERSION:-not bash}"
-echo "  [DIAG-COMPILER] STAGING_COMPILER=${STAGING_COMPILER}"
-echo "  [DIAG-COMPILER] Starting find loop from ${SDK_STAGING}:"
-copied_count=0
-skipped_count=0
-(cd "${SDK_STAGING}" && find . -mindepth 1 | sort) | while IFS= read -r entry; do
-    rel="${entry#./}"
-    skip=false
-    skip_reason=""
-
-    # Skip BLAS directories
-    for dir in "${SDK_BLAS_DIRS[@]}"; do
-        if [ "${rel}" = "${dir}" ] || [[ "${rel}" == "${dir}/"* ]]; then
-            skip=true; skip_reason="blas dir: ${dir}"; break
-        fi
-    done
-    [ "${skip}" = true ] && { echo "    SKIP [${skip_reason}]: ${rel}"; continue; }
-
-    # Skip MATH directories
-    for dir in "${SDK_MATH_DIRS[@]}"; do
-        if [ "${rel}" = "${dir}" ] || [[ "${rel}" == "${dir}/"* ]]; then
-            skip=true; skip_reason="math dir: ${dir}"; break
-        fi
-    done
-    [ "${skip}" = true ] && { echo "    SKIP [${skip_reason}]: ${rel}"; continue; }
-
-    # Skip lib/ files (they go to core-libs, blas, math, or device-libs)
-    if [[ "${rel}" == lib/* ]]; then
-        skip=true; skip_reason="lib/*"
+# Copy top-level directories that belong in the compiler partition
+# (everything NOT in lib/, llvm/, amdgcn/, BLAS, or MATH)
+COMPILER_TOP_LEVEL=(bin include share libexec)
+for d in "${COMPILER_TOP_LEVEL[@]}"; do
+    if [ -d "${SDK_STAGING}/${d}" ]; then
+        cp -a "${SDK_STAGING}/${d}" "${STAGING_COMPILER}/"
+        echo "    + ${d}/"
     fi
-    # Skip top-level llvm/ directory (duplicate of lib/llvm/, captured elsewhere)
-    if [[ "${rel}" == llvm/* ]]; then
-        skip=true; skip_reason="llvm/*"
-    fi
-    # Skip top-level amdgcn/ directory (duplicate of lib/llvm/lib/amdgcn-amd-amdhsa)
-    if [[ "${rel}" == amdgcn/* ]]; then
-        skip=true; skip_reason="amdgcn/*"
-    fi
-    [ "${skip}" = true ] && { skipped_count=$((skipped_count + 1)); [[ "${rel}" == */* ]] || echo "    SKIP [${skip_reason}]: ${rel}"; continue; }
-
-    # Only echo for top-level entries (not deeply nested)
-    [[ "${rel}" != */* ]] && echo "    COPY: ${rel}"
-    copied_count=$((copied_count + 1))
-    dest="${STAGING_COMPILER}/${rel}"
-    mkdir -p "$(dirname "${dest}")"
-    cp -a "${SDK_STAGING}/${rel}" "${dest}"
 done
-echo "  [DIAG-COMPILER] Find loop complete. Copied: ${copied_count}, Skipped: ${skipped_count}"
+
+# Copy metadata files
+if [ -d "${SDK_STAGING}/.info" ]; then
+    cp -a "${SDK_STAGING}/.info" "${STAGING_COMPILER}/"
+    echo "    + .info/"
+fi
+for f in setup-env.sh README.md; do
+    if [ -f "${SDK_STAGING}/${f}" ]; then
+        cp -a "${SDK_STAGING}/${f}" "${STAGING_COMPILER}/"
+        echo "    + ${f}"
+    fi
+done
 
 # LLVM toolchain files from lib/llvm/ (binaries, headers, clang resources)
 if [ -d "${SDK_STAGING}/lib/llvm" ]; then
