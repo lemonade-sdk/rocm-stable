@@ -299,28 +299,6 @@ filter_device_libs "${SDK_STAGING}"
 
 echo "Step 5: Splitting SDK into six content-based artifacts..."
 
-# DIAG: Show what's in the SDK staging before partitioning
-echo "  [DIAG] SDK staging top-level directories:"
-for d in "${SDK_STAGING}"/*/; do
-    if [ -d "$d" ]; then
-        dname=$(basename "$d")
-        dsize=$(du -sh "$d" 2>/dev/null | cut -f1)
-        dbytes=$(du -sb "$d" 2>/dev/null | cut -f1)
-        echo "    ${dname}: ${dsize} (${dbytes} bytes)"
-    fi
-done
-if [ -d "${SDK_STAGING}/lib" ]; then
-    echo "  [DIAG] SDK staging lib/ subdirectories:"
-    for d in "${SDK_STAGING}/lib/"*/; do
-        if [ -d "$d" ]; then
-            dname=$(basename "$d")
-            dsize=$(du -sh "$d" 2>/dev/null | cut -f1)
-            dbytes=$(du -sb "$d" 2>/dev/null | cut -f1)
-            echo "    lib/${dname}: ${dsize} (${dbytes} bytes)"
-        fi
-    done
-fi
-
 SDK_COMPILER="rocm-${ROCM_VERSION}-sdk-compiler.tar.gz"
 SDK_DEVICE_LIBS="rocm-${ROCM_VERSION}-sdk-device-libs.tar.gz"
 SDK_CORE_LIBS="rocm-${ROCM_VERSION}-sdk-core-libs.tar.gz"
@@ -576,16 +554,6 @@ fi
 
 # ---- Create tarballs ----
 echo "  Creating tarballs..."
-
-# Diagnostic: report compiler partition sizes by top-level directory
-echo "  [DIAG] Compiler partition top-level directory sizes:"
-for d in "${STAGING_COMPILER}"/*/; do
-    if [ -d "$d" ]; then
-        dname=$(basename "$d")
-        dsize=$(du -sh "$d" 2>/dev/null | cut -f1)
-        echo "    ${dname}: ${dsize}"
-    fi
-done
 
 tar -czf "${SDK_COMPILER}" -C "${STAGING_COMPILER}" .
 SDK_COMPILER_SIZE=$(du -h "${SDK_COMPILER}" | cut -f1)
