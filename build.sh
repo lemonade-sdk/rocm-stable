@@ -489,6 +489,19 @@ mkdir -p "${STAGING_DEVICE_LIBS}/lib"
     echo "    + lib/${rel}"
 done
 
+# GPU-specific clang resources and AMDGPU toolchain libs
+# These are device compilation resources that belong with device library bitcode
+if [ -d "${SDK_STAGING}/lib/llvm/lib/clang" ]; then
+    mkdir -p "${STAGING_DEVICE_LIBS}/lib/clang"
+    cp -a "${SDK_STAGING}/lib/llvm/lib/clang" "${STAGING_DEVICE_LIBS}/lib/"
+    echo "    + lib/llvm/lib/clang/"
+fi
+if [ -d "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" ]; then
+    mkdir -p "${STAGING_DEVICE_LIBS}/lib/amdgcn-amd-amdhsa"
+    cp -a "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" "${STAGING_DEVICE_LIBS}/lib/"
+    echo "    + lib/llvm/lib/amdgcn-amd-amdhsa/"
+fi
+
 # ---- sdk-compiler: everything else (bin, include, cmake, share, etc.) ----
 echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
 
@@ -534,18 +547,6 @@ if [ -d "${SDK_STAGING}/lib/llvm" ]; then
             echo "    + lib/llvm/${subdir}/"
         fi
     done
-    # Copy lib/clang/ (clang resource files: bitcode, headers, etc.)
-    if [ -d "${SDK_STAGING}/lib/llvm/lib/clang" ]; then
-        mkdir -p "${STAGING_COMPILER}/lib/clang"
-        cp -a "${SDK_STAGING}/lib/llvm/lib/clang" "${STAGING_COMPILER}/lib/"
-        echo "    + lib/llvm/lib/clang/"
-    fi
-    # Copy lib/amdgcn-amd-amdhsa/ (AMD GPU toolchain support)
-    if [ -d "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" ]; then
-        mkdir -p "${STAGING_COMPILER}/lib/amdgcn-amd-amdhsa"
-        cp -a "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" "${STAGING_COMPILER}/lib/"
-        echo "    + lib/llvm/lib/amdgcn-amd-amdhsa/"
-    fi
     # Copy lib/cmake/ (LLVM cmake config)
     if [ -d "${SDK_STAGING}/lib/llvm/lib/cmake" ]; then
         mkdir -p "${STAGING_COMPILER}/lib/cmake"
