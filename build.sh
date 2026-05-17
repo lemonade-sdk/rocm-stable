@@ -455,13 +455,17 @@ echo "  Partitioning: sdk-device-libs (device library bitcode)..."
 
 mkdir -p "${STAGING_DEVICE_LIBS}/lib"
 
-(cd "${SDK_STAGING}" && find lib -type f ! -name '*.so' ! -name '*.so.*') | while IFS= read -r entry; do
+(cd "${SDK_STAGING}" && find lib -type f \( ! -name '*.so' ! -name '*.so.*' \)) | while IFS= read -r entry; do
     rel="${entry#lib/}"
     fname=$(basename "${entry}")
     skip=false
 
     # Skip lib/llvm/ entirely - those are compiler toolchain files
     if [[ "${rel}" == llvm/* ]]; then
+        skip=true
+    fi
+    # Skip lib/clang/ and lib/amdgcn-amd-amdhsa/ - explicitly copied below
+    if [[ "${rel}" == clang/* ]] || [[ "${rel}" == amdgcn-amd-amdhsa/* ]]; then
         skip=true
     fi
     [ "${skip}" = true ] && continue
@@ -496,7 +500,12 @@ if [ -d "${SDK_STAGING}/lib/llvm/lib/clang" ]; then
     cp -a "${SDK_STAGING}/lib/llvm/lib/clang" "${STAGING_DEVICE_LIBS}/lib/"
     echo "    + lib/llvm/lib/clang/"
 fi
-if [ -d "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" ]; then
+# amdgcn-amd-amdhsa may be at root level or under llvm/
+if [ -d "${SDK_STAGING}/lib/amdgcn-amd-amdhsa" ]; then
+    mkdir -p "${STAGING_DEVICE_LIBS}/lib/amdgcn-amd-amdhsa"
+    cp -a "${SDK_STAGING}/lib/amdgcn-amd-amdhsa" "${STAGING_DEVICE_LIBS}/lib/"
+    echo "    + lib/amdgcn-amd-amdhsa/"
+elif [ -d "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" ]; then
     mkdir -p "${STAGING_DEVICE_LIBS}/lib/amdgcn-amd-amdhsa"
     cp -a "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" "${STAGING_DEVICE_LIBS}/lib/"
     echo "    + lib/llvm/lib/amdgcn-amd-amdhsa/"
