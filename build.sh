@@ -1,11 +1,12 @@
 #!/bin/bash
-# Build script for four ROCm artifacts:
-#   1. rocm-<ver>-runtime-libs.tar.gz  - runtime library bundle
-#   2. rocm-<ver>-sdk-toolchain.tar.gz - compiler, headers, cmake, core dev files
-#   3. rocm-<ver>-sdk-blas.tar.gz      - rocBLAS, hipBLAS, hipBLASLt + Tensile kernels
-#   4. rocm-<ver>-sdk-math.tar.gz      - rocSPARSE, rocSOLVER, random libs, etc.
+# Build script for five ROCm artifacts:
+#   1. rocm-<ver>-runtime-libs.tar.gz   - runtime library bundle
+#   2. rocm-<ver>-sdk-compiler.tar.gz   - compiler, headers, cmake, dev files
+#   3. rocm-<ver>-sdk-core-libs.tar.gz  - core shared libraries (HIP, HSA, LLVM)
+#   4. rocm-<ver>-sdk-blas.tar.gz       - rocBLAS, hipBLAS, hipBLASLt + Tensile kernels
+#   5. rocm-<ver>-sdk-math.tar.gz       - rocSPARSE, rocSOLVER, random libs, etc.
 #
-# Both tarballs are extracted from the official AMD ROCm .deb packages
+# All tarballs are extracted from the official AMD ROCm .deb packages
 # (no apt / repo.radeon.com needed at consume time).
 
 set -eo pipefail
@@ -268,15 +269,16 @@ echo "${ROCM_VERSION}" > "${SDK_STAGING}/.info/version"
 echo "Step 4: Filtering tensile libraries for GPU_TARGETS..."
 filter_gpu_libs "${SDK_STAGING}"
 
-echo "Step 5: Splitting SDK into three content-based artifacts..."
+echo "Step 5: Splitting SDK into four content-based artifacts..."
 
-SDK_TOOLCHAIN="rocm-${ROCM_VERSION}-sdk-toolchain.tar.gz"
+SDK_COMPILER="rocm-${ROCM_VERSION}-sdk-compiler.tar.gz"
+SDK_CORE_LIBS="rocm-${ROCM_VERSION}-sdk-core-libs.tar.gz"
 SDK_BLAS="rocm-${ROCM_VERSION}-sdk-blas.tar.gz"
 SDK_MATH="rocm-${ROCM_VERSION}-sdk-math.tar.gz"
 
 # --- Define content partitions ---
 
-# sdk-blas: BLAS libraries with Tensile kernel data (largest component)
+# sdk-blas: BLAS libraries with Tensile kernel data
 SDK_BLAS_DIRS=(
     "lib/rocblas"
     "lib/hipblaslt"
@@ -305,13 +307,15 @@ SDK_MATH_LIBS=(
 )
 
 # --- Create component staging directories ---
-STAGING_TOOLCHAIN="${SDK_STAGING}-toolchain"
+STAGING_COMPILER="${SDK_STAGING}-compiler"
+STAGING_CORE_LIBS="${SDK_STAGING}-core-libs"
 STAGING_BLAS="${SDK_STAGING}-blas"
 STAGING_MATH="${SDK_STAGING}-math"
 
-rm -rf "${STAGING_TOOLCHAIN}" "${STAGING_BLAS}" "${STAGING_MATH}"
-mkdir -p "${STAGING_TOOLCHAIN}" "${STAGING_BLAS}" "${STAGING_MATH}"
+rm -rf "${STAGING_COMPILER}" "${STAGING_CORE_LIBS}" "${STAGING_BLAS}" "${STAGING_MATH}"
+mkdir -p "${STAGING_COMPILER}" "${STAGING_CORE_LIBS}" "${STAGING_BLAS}" "${STAGING_MATH}"
 
+# ---- sdk-blas ----
 echo "  Partitioning: sdk-blas (BLAS libraries + Tensile kernels)..."
 
 mkdir -p "${STAGING_BLAS}/lib"
@@ -334,6 +338,7 @@ for lib in "${SDK_BLAS_LIBS[@]}"; do
     done
 done
 
+# ---- sdk-math ----
 echo "  Partitioning: sdk-math (sparse/solver/random libraries)..."
 
 mkdir -p "${STAGING_MATH}/lib"
@@ -356,12 +361,33 @@ for lib in "${SDK_MATH_LIBS[@]}"; do
     done
 done
 
-echo "  Partitioning: sdk-toolchain (compilers, headers, cmake, remaining)..."
+# ---- sdk-core-libs: all lib/*.so* at root level (except BLAS/MATH) ----
+echo "  Partitioning: sdk-core-libs (core shared libraries)..."
 
-# Build exclusion lists for the toolchain copy
-BLAS_MATH_ENTRIES=()
-for dir in "${SDK_BLAS_DIRS[@]}"; do BLAS_MATH_ENTRIES+=("${dir}"); done
-for dir in "${SDK_MATH_DIRS[@]}"; do BLAS_MATH_ENTRIES+=("${dir}"); done
+mkdir -p "${STAGING_CORE_LIBS}/lib"
+
+find "${SDK_STAGING}/lib" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) \( -type f -o -type l \) | while IFS= read -r f; do
+    fname=$(basename "$f")
+    skip=false
+
+    # Skip if matches BLAS pattern
+    for lib in "${SDK_BLAS_LIBS[@]}"; do
+        eval "case \"\${fname}\" in ${lib}) skip=true; break ;; esac"
+    done
+    [ "${skip}" = true ] && continue
+
+    # Skip if matches MATH pattern
+    for lib in "${SDK_MATH_LIBS[@]}"; do
+        eval "case \"\${fname}\" in ${lib}) skip=true; break ;; esac"
+    done
+    [ "${skip}" = true ] && continue
+
+    cp -a "$f" "${STAGING_CORE_LIBS}/lib/"
+    echo "    + lib/${fname}"
+done
+
+# ---- sdk-compiler: everything else (bin, include, cmake, share, etc.) ----
+echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
 
 (cd "${SDK_STAGING}" && find . -mindepth 1) | while IFS= read -r entry; do
     rel="${entry#./}"
@@ -383,48 +409,45 @@ for dir in "${SDK_MATH_DIRS[@]}"; do BLAS_MATH_ENTRIES+=("${dir}"); done
     done
     [ "${skip}" = true ] && continue
 
-    # Skip BLAS .so files at lib/ root
+    # Skip lib/*.so* files (they go to core-libs, blas, or math)
     if [[ "$(dirname "${rel}")" == "lib" ]]; then
         fname=$(basename "${rel}")
-        for lib in "${SDK_BLAS_LIBS[@]}"; do
-            eval "case \"\${fname}\" in ${lib}) skip=true; break ;; esac"
-        done
+        if [[ "$fname" == *.so || "$fname" == *.so.* ]]; then
+            skip=true
+        fi
     fi
     [ "${skip}" = true ] && continue
 
-    # Skip MATH .so files at lib/ root
-    if [[ "$(dirname "${rel}")" == "lib" ]]; then
-        fname=$(basename "${rel}")
-        for lib in "${SDK_MATH_LIBS[@]}"; do
-            eval "case \"\${fname}\" in ${lib}) skip=true; break ;; esac"
-        done
-    fi
-    [ "${skip}" = true ] && continue
-
-    dest="${STAGING_TOOLCHAIN}/${rel}"
+    dest="${STAGING_COMPILER}/${rel}"
     mkdir -p "$(dirname "${dest}")"
     cp -a "${SDK_STAGING}/${rel}" "${dest}"
 done
 
+# ---- Create tarballs ----
 echo "  Creating tarballs..."
 
-tar -czf "${SDK_TOOLCHAIN}" -C "${STAGING_TOOLCHAIN}" .
-SDK_TOOLCHAIN_SIZE=$(du -h "${SDK_TOOLCHAIN}" | cut -f1)
-echo "    sdk-toolchain: ${SDK_TOOLCHAIN} (${SDK_TOOLCHAIN_SIZE})"
+tar -czf "${SDK_COMPILER}" -C "${STAGING_COMPILER}" .
+SDK_COMPILER_SIZE=$(du -h "${SDK_COMPILER}" | cut -f1)
+echo "    sdk-compiler:   ${SDK_COMPILER} (${SDK_COMPILER_SIZE})"
+
+tar -czf "${SDK_CORE_LIBS}" -C "${STAGING_CORE_LIBS}" .
+SDK_CORE_LIBS_SIZE=$(du -h "${SDK_CORE_LIBS}" | cut -f1)
+echo "    sdk-core-libs:  ${SDK_CORE_LIBS} (${SDK_CORE_LIBS_SIZE})"
 
 tar -czf "${SDK_BLAS}" -C "${STAGING_BLAS}" .
 SDK_BLAS_SIZE=$(du -h "${SDK_BLAS}" | cut -f1)
-echo "    sdk-blas:      ${SDK_BLAS} (${SDK_BLAS_SIZE})"
+echo "    sdk-blas:       ${SDK_BLAS} (${SDK_BLAS_SIZE})"
 
 tar -czf "${SDK_MATH}" -C "${STAGING_MATH}" .
 SDK_MATH_SIZE=$(du -h "${SDK_MATH}" | cut -f1)
-echo "    sdk-math:      ${SDK_MATH} (${SDK_MATH_SIZE})"
+echo "    sdk-math:       ${SDK_MATH} (${SDK_MATH_SIZE})"
 
-rm -rf "${STAGING_TOOLCHAIN}" "${STAGING_BLAS}" "${STAGING_MATH}" "${SDK_TEMP}" "${SDK_DIST}" "${SDK_STAGING}"
+rm -rf "${STAGING_COMPILER}" "${STAGING_CORE_LIBS}" "${STAGING_BLAS}" "${STAGING_MATH}" "${SDK_TEMP}" "${SDK_DIST}" "${SDK_STAGING}"
 
 echo ""
-echo "Done! Built four bundles:"
+echo "Done! Built five bundles:"
 echo "  - ${RUNTIME_TARBALL} (${RUNTIME_SIZE})"
-echo "  - ${SDK_TOOLCHAIN} (${SDK_TOOLCHAIN_SIZE})"
+echo "  - ${SDK_COMPILER} (${SDK_COMPILER_SIZE})"
+echo "  - ${SDK_CORE_LIBS} (${SDK_CORE_LIBS_SIZE})"
 echo "  - ${SDK_BLAS} (${SDK_BLAS_SIZE})"
 echo "  - ${SDK_MATH} (${SDK_MATH_SIZE})"
