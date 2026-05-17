@@ -507,8 +507,14 @@ if [ -d "${SDK_STAGING}/lib/amdgcn-amd-amdhsa" ]; then
     echo "    + lib/amdgcn-amd-amdhsa/"
 elif [ -d "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" ]; then
     mkdir -p "${STAGING_DEVICE_LIBS}/lib/amdgcn-amd-amdhsa"
-    cp -a "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" "${STAGING_DEVICE_LIBS}/lib/"
+    cp -a "${SDK_STAGING}/lib/llvm/lib/amdgcn-amdhsa" "${STAGING_DEVICE_LIBS}/lib/"
     echo "    + lib/llvm/lib/amdgcn-amd-amdhsa/"
+fi
+# Top-level amdgcn/ directory (AMDGPU backend data)
+if [ -d "${SDK_STAGING}/amdgcn" ]; then
+    mkdir -p "${STAGING_DEVICE_LIBS}/amdgcn"
+    cp -a "${SDK_STAGING}/amdgcn" "${STAGING_DEVICE_LIBS}/"
+    echo "    + amdgcn/"
 fi
 
 # ---- sdk-compiler: explicit whitelist of compiler/toolchain content ----
