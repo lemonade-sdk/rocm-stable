@@ -391,11 +391,13 @@ for lib in "${SDK_MATH_LIBS[@]}"; do
     done
 done
 
-# ---- sdk-core-libs: all lib/*.so* at root level (except BLAS/MATH) ----
+# ---- sdk-core-libs: all lib/*.so* files (except BLAS/MATH) ----
+# Includes LLVM shared libraries from lib/llvm/lib/
 echo "  Partitioning: sdk-core-libs (core shared libraries)..."
 
 mkdir -p "${STAGING_CORE_LIBS}/lib"
 
+# Root-level lib/*.so* files (except BLAS/MATH patterns)
 find "${SDK_STAGING}/lib" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) \( -type f -o -type l \) | while IFS= read -r f; do
     fname=$(basename "$f")
     skip=false
@@ -416,7 +418,17 @@ find "${SDK_STAGING}/lib" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) \( -t
     echo "    + lib/${fname}"
 done
 
+# LLVM shared libraries from lib/llvm/lib/
+if [ -d "${SDK_STAGING}/lib/llvm/lib" ]; then
+    find "${SDK_STAGING}/lib/llvm/lib" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) \( -type f -o -type l \) | while IFS= read -r f; do
+        cp -a "$f" "${STAGING_CORE_LIBS}/lib/"
+        echo "    + lib/llvm/$(basename "$f")"
+    done
+fi
+
 # ---- sdk-device-libs: lib/ non-.so* files (device library bitcode) ----
+# Special handling for lib/llvm/: compiler toolchain lives here, skip it.
+# lib/llvm/ files go to compiler (bin, include, cmake, share) or core-libs (.so).
 echo "  Partitioning: sdk-device-libs (device library bitcode)..."
 
 mkdir -p "${STAGING_DEVICE_LIBS}/lib"
@@ -425,6 +437,12 @@ mkdir -p "${STAGING_DEVICE_LIBS}/lib"
     rel="${entry#lib/}"
     fname=$(basename "${entry}")
     skip=false
+
+    # Skip lib/llvm/ entirely - those are compiler toolchain files
+    if [[ "${rel}" == llvm/* ]]; then
+        skip=true
+    fi
+    [ "${skip}" = true ] && continue
 
     # Skip if in BLAS or MATH subdirectories
     for dir in "${SDK_BLAS_DIRS[@]}"; do
@@ -483,8 +501,62 @@ echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
     cp -a "${SDK_STAGING}/${rel}" "${dest}"
 done
 
+# LLVM toolchain files from lib/llvm/ (binaries, headers, clang resources)
+if [ -d "${SDK_STAGING}/lib/llvm" ]; then
+    echo "  Partitioning: lib/llvm/ toolchain into compiler..."
+    # Copy bin/, include/, share/, cmake/ from lib/llvm/
+    for subdir in bin include share cmake; do
+        if [ -d "${SDK_STAGING}/lib/llvm/${subdir}" ]; then
+            mkdir -p "${STAGING_COMPILER}/${subdir}"
+            cp -a "${SDK_STAGING}/lib/llvm/${subdir}" "${STAGING_COMPILER}/"
+            echo "    + lib/llvm/${subdir}/"
+        fi
+    done
+    # Copy lib/clang/ (clang resource files: bitcode, headers, etc.)
+    if [ -d "${SDK_STAGING}/lib/llvm/lib/clang" ]; then
+        mkdir -p "${STAGING_COMPILER}/lib/clang"
+        cp -a "${SDK_STAGING}/lib/llvm/lib/clang" "${STAGING_COMPILER}/lib/"
+        echo "    + lib/llvm/lib/clang/"
+    fi
+    # Copy lib/amdgcn-amd-amdhsa/ (AMD GPU toolchain support)
+    if [ -d "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" ]; then
+        mkdir -p "${STAGING_COMPILER}/lib/amdgcn-amd-amdhsa"
+        cp -a "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" "${STAGING_COMPILER}/lib/"
+        echo "    + lib/llvm/lib/amdgcn-amd-amdhsa/"
+    fi
+    # Copy lib/cmake/ (LLVM cmake config)
+    if [ -d "${SDK_STAGING}/lib/llvm/lib/cmake" ]; then
+        mkdir -p "${STAGING_COMPILER}/lib/cmake"
+        cp -a "${SDK_STAGING}/lib/llvm/lib/cmake" "${STAGING_COMPILER}/lib/"
+        echo "    + lib/llvm/lib/cmake/"
+    fi
+    # Copy lib/libunwind.a and other static libs from lib/llvm/lib/
+    if [ -d "${SDK_STAGING}/lib/llvm/lib" ]; then
+        find "${SDK_STAGING}/lib/llvm/lib" -maxdepth 1 -type f \( -name '*.a' -o -name '*.la' \) | while IFS= read -r f; do
+            cp -a "$f" "${STAGING_COMPILER}/lib/"
+            echo "    + lib/llvm/lib/$(basename "$f")"
+        done
+    fi
+    # Copy lib-debug/ (LLVM debug symbols from openmp-extras)
+    if [ -d "${SDK_STAGING}/lib/llvm/lib-debug" ]; then
+        mkdir -p "${STAGING_COMPILER}/lib-debug"
+        cp -a "${SDK_STAGING}/lib/llvm/lib-debug" "${STAGING_COMPILER}/"
+        echo "    + lib/llvm/lib-debug/"
+    fi
+fi
+
 # ---- Create tarballs ----
 echo "  Creating tarballs..."
+
+# Diagnostic: report compiler partition sizes by top-level directory
+echo "  [DIAG] Compiler partition top-level directory sizes:"
+for d in "${STAGING_COMPILER}"/*/; do
+    if [ -d "$d" ]; then
+        dname=$(basename "$d")
+        dsize=$(du -sh "$d" 2>/dev/null | cut -f1)
+        echo "    ${dname}: ${dsize}"
+    fi
+done
 
 tar -czf "${SDK_COMPILER}" -C "${STAGING_COMPILER}" .
 SDK_COMPILER_SIZE=$(du -h "${SDK_COMPILER}" | cut -f1)
