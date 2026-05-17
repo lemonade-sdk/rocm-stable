@@ -488,24 +488,16 @@ elif [ -d "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" ]; then
     cp -a "${SDK_STAGING}/lib/llvm/lib/amdgcn-amd-amdhsa" "${STAGING_DEVICE_LIBS}/lib/"
     echo "    + lib/llvm/lib/amdgcn-amd-amdhsa/"
 fi
-# Top-level amdgcn/ directory (AMDGPU backend data)
-if [ -d "${SDK_STAGING}/amdgcn" ]; then
-    rm -rf "${STAGING_DEVICE_LIBS}/amdgcn"
-    mkdir -p "${STAGING_DEVICE_LIBS}/amdgcn"
-    cp -a "${SDK_STAGING}/amdgcn" "${STAGING_DEVICE_LIBS}/"
-    echo "    + amdgcn/"
-elif [ -f "${SDK_STAGING}/amdgcn" ]; then
-    mkdir -p "${STAGING_DEVICE_LIBS}/amdgcn"
-    cp -a "${SDK_STAGING}/amdgcn" "${STAGING_DEVICE_LIBS}/amdgcn/"
-    echo "    + amdgcn (file)"
-fi
+# Top-level amdgcn/ (AMDGPU backend) - handled by compiler partition whitelist
+# (the find loop in device-libs only scans lib/, so top-level amdgcn is
+#  not discovered there; explicit cp had issues with file vs directory)
 
 # ---- sdk-compiler: explicit whitelist of compiler/toolchain content ----
 echo "  Partitioning: sdk-compiler (compilers, headers, cmake, remaining)..."
 
 # Copy top-level directories that belong in the compiler partition
 # (everything NOT in lib/, llvm/, amdgcn/, BLAS, or MATH)
-COMPILER_TOP_LEVEL=(bin include share libexec)
+COMPILER_TOP_LEVEL=(bin include share libexec amdgcn)
 for d in "${COMPILER_TOP_LEVEL[@]}"; do
     if [ -d "${SDK_STAGING}/${d}" ]; then
         cp -a "${SDK_STAGING}/${d}" "${STAGING_COMPILER}/"
