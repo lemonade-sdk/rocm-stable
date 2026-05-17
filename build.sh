@@ -199,6 +199,10 @@ else
     exit 1
 fi
 
+# Step 2.5: Remove unversioned .so dev symlinks (link-time only, not needed at runtime)
+echo "Step 2.5: Removing unversioned .so dev symlinks from runtime bundle..."
+find "${RUNTIME_STAGING}" -maxdepth 1 -type l -name '*.so' ! -name '*.so.*' -delete 2>/dev/null || true
+
 if [ -f "templates/setup-env.sh" ]; then
     cp templates/setup-env.sh "${RUNTIME_STAGING}/"
     chmod +x "${RUNTIME_STAGING}/setup-env.sh"

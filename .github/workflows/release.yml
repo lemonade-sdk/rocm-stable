@@ -96,9 +96,76 @@ jobs:
             ${{ steps.ver.outputs.sdk_bundle }}.sha256
           retention-days: 5
 
+  verify:
+    name: Verify ROCm Bundles
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rocm-bundles
+
+      - name: Size gate (2 GB GitHub release limit)
+        run: |
+          runtime="${{ needs.build.outputs.runtime_bundle }}"
+          sdk="${{ needs.build.outputs.sdk_bundle }}"
+          max_bytes=2147483648
+
+          runtime_bytes=$(stat -c%s "${runtime}")
+          sdk_bytes=$(stat -c%s "${sdk}")
+
+          echo "Runtime: $(numfmt --to=iec "${runtime_bytes}") (${runtime_bytes} bytes)"
+          echo "SDK:     $(numfmt --to=iec "${sdk_bytes}") (${sdk_bytes} bytes)"
+          echo "Limit:   2 GB (${max_bytes} bytes)"
+
+          if [ "${runtime_bytes}" -gt "${max_bytes}" ]; then
+            echo "::error::Runtime bundle exceeds 2 GB GitHub release limit"
+            exit 1
+          fi
+          if [ "${sdk_bytes}" -gt "${max_bytes}" ]; then
+            echo "::error::SDK bundle exceeds 2 GB GitHub release limit"
+            exit 1
+          fi
+          echo "Size gate passed."
+
+      - name: Verify checksums
+        run: |
+          runtime="${{ needs.build.outputs.runtime_bundle }}"
+          sdk="${{ needs.build.outputs.sdk_bundle }}"
+          sha256sum -c "${runtime}.sha256"
+          sha256sum -c "${sdk}.sha256"
+
+      - name: ldd check -- runtime bundle
+        run: |
+          runtime="${{ needs.build.outputs.runtime_bundle }}"
+          tmpdir=$(mktemp -d)
+          tar -xzf "${runtime}" -C "${tmpdir}"
+
+          # Runtime bundle extracts .so files at the root level
+          libdir="${tmpdir}"
+
+          export LD_LIBRARY_PATH="${libdir}:${LD_LIBRARY_PATH:-}"
+
+          echo "Checking shared library dependencies..."
+          missing=$(find "${libdir}" -name '*.so*' -type f -exec ldd {} \; 2>/dev/null \
+            | grep 'not found' \
+            | grep -v -E 'libc\.so|libstdc\+\+\.so|libm\.so|libdl\.so|libpthread|librt\.so|libgcc_s\.so|ld-linux|libz\.so|liblzma\.so|libdrm\.so|libnuma\.so|libelf\.so' \
+            || true)
+
+          if [ -n "${missing}" ]; then
+            echo "::error::Missing shared library dependencies detected:"
+            echo "${missing}"
+            exit 1
+          fi
+          echo "ldd check passed -- all runtime dependencies resolved."
+
+          rm -rf "${tmpdir}"
+
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build, verify]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
 
